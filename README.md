@@ -1,14 +1,5 @@
 # FLUXNET benchmark
 
-This git contains implementations of the following methods
-1. Linear Regression (LR),
-2. Extreme Gradient Boosting (XGBoost),
-3. Long Short-Term Memory (LSTM),
-4. Invariant Risk Minimization (IRM),
-5. Stabilized Regression (SR) with LR and XGBoost as underlying regressor.
-
-To reproduce the experiments, ensure that you have access to the FLUXNET dataset.
-
 ## Required packages
 
 ```python
