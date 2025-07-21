@@ -30,7 +30,7 @@ Optional arguments
     - insite: for a given site, split the data 80/20 (keeping time order), train on the first 80%, test on the last 20%
     - insite-random: for a given site, split the data 80/20 randomly
     - loso: train on all sites except one, evaluate on that site (slower)
-    - (TODO: logo, random-insite, random??)
+    - (TODO: logo, random-insite, random)
 * `--start`, `--stop`: which groups to run the experiment on
 * `--model_name`: lr, xgb (TODO: irm, sr, lstm)
 
