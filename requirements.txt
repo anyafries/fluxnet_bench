@@ -1,0 +1,9 @@
+matplotlib
+numpy
+pandas
+scikit-learn==1.5.2
+seaborn
+torch
+xarray
+xgboost
+# brew install libomp
