@@ -14,15 +14,21 @@ The FLUXNET dataset contains 870 files. For every site there is a flux, a meteo 
 
 Information about the data: https://pad.gwdg.de/s/yuCtk9fj5
 
-Run the following to obtain the cleaned raw, daily, and seasonal datasets. (This takes a while.) A folder `data_cleaned` with the aggregated datasets will be created.
+Run the following to obtain the cleaned raw, daily, and seasonal datasets. (This takes a while.)
 
-`python3 preprocessing.py` 
+```
+python3 preprocessing.py
+```
+
+A folder `data_cleaned` with the aggregated datasets will be created.
 
 ## Types of experiments (todo)
 
 Run an experiment, i.e., train the model and test on unseen data.
 
-`python3 run_experiment.py`
+```
+python3 run_experiment.py
+```
 
 Optional arguments
 * `----agg`: raw, daily, seasonal
@@ -36,7 +42,9 @@ Optional arguments
 
 For example, the following runs leave-one-site-out linear regression for the 5th-10th sites on seasonal data: 
 
-`python3 run_experiment.py --agg seasonal --setting loso --start 5 --stop 10 --model lr`
+```
+python3 run_experiment.py --agg seasonal --setting loso --start 5 --stop 10 --model lr
+```
 
 Some intermediate results are stored in `results/`.
 
@@ -47,11 +55,18 @@ TODO: cross-validation
 1. Line 27: add your model to the `get_model(model, params={})2. 
 2. Line 43: add the model parameters to `get_default_params(model)` (ignore cv argument, not implemented yet)
 
-That's all! Then run `python3 run_experiment.py --model your_model_name`.
+That's all! Then run 
+```
+python3 run_experiment.py --model your_model_name
+```
 
 ## Evaluation
 
-`python3 eval.py` compares any experiments within the arguments 
+To compare any experiments with the given arguments: 
+
+```
+python3 eval.py
+``` 
 
 * `----agg`: raw, daily, seasonal
 * `--setting`: insite, loso (TODO: logo, random-insite, random??)
@@ -60,4 +75,6 @@ all the start, stop are aggregated... See `results/plots_tmp` for plots that com
 
 For example, the following evaluates the previous code:
 
-`python3 eval.py --agg seasonal --setting loso`
+```
+python3 eval.py --agg seasonal --setting loso
+```
