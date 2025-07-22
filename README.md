@@ -52,7 +52,7 @@ TODO: cross-validation
 
 ## How do I add my own model?
 
-1. Line 27: add your model to the `get_model(model, params={})2. 
+1. Line 27: add your model to the `get_model(model, params={})`. 
 2. Line 43: add the model parameters to `get_default_params(model)` (ignore cv argument, not implemented yet)
 
 That's all! Then run 
