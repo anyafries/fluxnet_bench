@@ -22,7 +22,7 @@ python3 preprocessing.py
 
 A folder `data_cleaned` with the aggregated datasets will be created.
 
-## Types of experiments (todo)
+## Types of experiments
 
 Run an experiment, i.e., train the model and test on unseen data.
 
