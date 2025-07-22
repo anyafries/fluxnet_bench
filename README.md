@@ -10,9 +10,9 @@ python3 -m pip install -r requirements.txt
 
 ## Preprocessing data
 
-The FLUXNET dataset contains 870 files. For every site there is a flux, a meteo and a remote sensing file (thus in total data from 290 sites). The data needs to be copied into the main directory in the "data" folder.
+The data needs to be copied into the main directory in the "data" folder.
 
-Information about the data: https://pad.gwdg.de/s/yuCtk9fj5
+Information about the FLUXNET data: https://pad.gwdg.de/s/yuCtk9fj5
 
 Run the following to obtain the cleaned raw, daily, and seasonal datasets. (This takes a while.)
 
@@ -31,7 +31,7 @@ python3 run_experiment.py
 ```
 
 Optional arguments
-* `----agg`: raw, daily, seasonal
+* `--agg`: raw, daily, seasonal
 * `--setting`: 
     - insite: for a given site, split the data 80/20 (keeping time order), train on the first 80%, test on the last 20%
     - insite-random: for a given site, split the data 80/20 randomly
