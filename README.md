@@ -72,9 +72,9 @@ python3 eval.py
 * `----agg`: raw, daily, seasonal
 * `--setting`: insite, loso (TODO: logo, random-insite, random??)
 
-all the start, stop are aggregated... See `results/plots_tmp` for plots that compare the methods. There will also be a table of results printed to the terminal.
+Output plots will appear in `results/plots_tmp`. There will also be a table of results printed to the terminal.
 
-For example, the following evaluates the previous code:
+For example, the following evaluates any sites that have been evaluated at the seasonal aggregation in the leave-one-site-out setting:
 
 ```
 python3 eval.py --agg seasonal --setting loso
