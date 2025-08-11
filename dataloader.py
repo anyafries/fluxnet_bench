@@ -96,8 +96,8 @@ def get_fold_df(df, setting, group, target='GPP', cv=False, remove_missing=False
     # X_train_scaled = np.asarray(X_train_scaled, dtype=np.float32)
 
     # split into x,y
-    xtrain, ytrain = train[:, xcols], train[:, ycol]
-    xtest, ytest = test[:, xcols], test[:, ycol]
+    xtrain, ytrain = train[:, xcols], train[:, ycol].ravel()
+    xtest, ytest = test[:, xcols], test[:, ycol].ravel()
     if astorch:
         xtrain = torch.tensor(xtrain, dtype=torch.float32)
         ytrain = torch.tensor(ytrain, dtype=torch.float32).view(-1, 1)

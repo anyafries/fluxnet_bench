@@ -3,3 +3,4 @@ data_cleaned/*
 fluxnet_bench_venv/*
 __pycache__/*
 results/*
+.DS_Store
