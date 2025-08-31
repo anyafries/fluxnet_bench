@@ -5,7 +5,6 @@ import os
 import pandas as pd
 
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import KFold, GroupKFold, TimeSeriesSplit, cross_val_score, GridSearchCV
 from xgboost import XGBRegressor
 
 from dataloader import generate_fold_info, get_fold_df
@@ -41,27 +40,21 @@ def get_model(model, params={}):
         raise NotImplementedError(f"Model `{model}` not implemented.")
     
 
-def get_default_params(model, cv=False):
+def get_default_params(model):
     """
     Returns default parameters for the specified model.
     
     Args:
         model (str): The name of the model.
-        cv (bool): Whether to use cross-validation.
     """
     params = {}
     if model_name == 'xgb':
-        if cv: 
-            params = {'objective': ['reg:squarederror'],
-                    'n_estimators': [100, 200],
-                    'max_depth': [3, 5, 7],
-                    'learning_rate': [0.01, 0.05, 0.1, 0.2]}
-        else:
-            params = {'objective': 'reg:squarederror',
-                    'n_estimators': 100,
-                    'max_depth': 5,
-                    'learning_rate': 0.1}
-
+        params = {
+            'objective': 'reg:squarederror', 
+            'n_estimators': 100,
+            'max_depth': 5,
+            'learning_rate': 0.1
+        }
     # elif model_name == 'irm':
     #     params = {'n_iterations': 1000,
     #               'lr': 0.01}
@@ -89,8 +82,6 @@ if __name__ == "__main__":
                         help="Custom name for the experiment")
     parser.add_argument("--params", type=str, default=None, 
                         help="Path to parameter file for the model")
-    parser.add_argument("--cv", action='store_true', 
-                        help="Use cross-validation for the experiment")
     
     args = parser.parse_args()
     path = args.path
@@ -102,10 +93,9 @@ if __name__ == "__main__":
     model_name = args.model_name
     exp_name = args.experiment_name
     params = args.params
-    cv = args.cv
 
     if exp_name is None:
-        exp_name = f"{agg}_{setting}_{model_name}_start{start}_stop{stop}_cv{cv}"
+        exp_name = f"{agg}_{setting}_{model_name}_start{start}_stop{stop}_cv{False}"
 
     # Get model parameters
     if params is not None:
@@ -113,13 +103,7 @@ if __name__ == "__main__":
         params = pd.read_csv(params)
         params = params.to_dict(orient='records')[0]
     else: 
-        params = get_default_params(model_name, cv=cv)
-    # if cv:
-    #     keys = params.keys()
-    #     values = params.values()
-    #     all_param_combinations = [dict(zip(keys, combination)) 
-    #                               for combination in itertools.product(*values)]
-
+        params = get_default_params(model_name)
 
     # Load data
     data_path = path+agg+".csv"
@@ -134,39 +118,12 @@ if __name__ == "__main__":
     for group in groups:
         logging.info(f"Running group: {group}...")
         xtrain, ytrain, xtest, ytest, train_ids = get_fold_df(
-            df, setting, group, cv=cv, remove_missing=True)
+            df, setting, group, remove_missing=True)
         if xtrain is None: continue
 
         # Get model
-        if not cv:
-            model = get_model(model_name, params=params)
-            model.fit(xtrain, ytrain)
-        else: 
-            n_splits = 5
-            if xtrain.shape[0] < 2*n_splits:
-                logging.warning(f"{group} has <{2*n_splits} entries, skipping.")
-                continue
-            if setting == 'insite': 
-                # https://stats.stackexchange.com/a/268847
-                folds = TimeSeriesSplit(n_splits=n_splits)
-            else: 
-                # TODO: use GroupKFold
-                # https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupKFold.html
-                # folds = KFold(n_splits=5)
-                folds = GroupKFold(n_splits=n_splits)
-
-            clf = GridSearchCV(
-                estimator=get_model(model_name),
-                param_grid=params,
-                scoring='neg_root_mean_squared_error',
-                cv=folds 
-            )
-            if setting == 'insite': 
-                clf.fit(xtrain, ytrain)
-            else:
-                clf.fit(xtrain, ytrain, groups=train_ids)
-            logging.info(f"* Best parameters: {clf.best_params_}")
-            model = clf.best_estimator_
+        model = get_model(model_name, params=params)
+        model.fit(xtrain, ytrain)
 
         # Evaluate model
         ypred = model.predict(xtest)

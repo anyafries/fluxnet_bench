@@ -36,9 +36,8 @@ Optional arguments
     - insite: for a given site, split the data 80/20 (keeping time order), train on the first 80%, test on the last 20%
     - insite-random: for a given site, split the data 80/20 randomly
     - loso: train on all sites except one, evaluate on that site (slower)
-    - (TODO: logo, random-insite, random)
 * `--start`, `--stop`: which groups to run the experiment on
-* `--model_name`: lr, xgb (TODO: irm, sr, lstm)
+* `--model_name`: lr, xgb 
 
 For example, the following runs leave-one-site-out linear regression for the 5th-10th sites on seasonal data: 
 
@@ -68,7 +67,7 @@ python3 eval.py
 ``` 
 
 * `----agg`: raw, daily, seasonal
-* `--setting`: insite, loso (TODO: logo, random-insite, random??)
+* `--setting`: insite, loso 
 
 Output plots will appear in `results/plots_tmp`. There will also be a table of results printed to the terminal.
 
