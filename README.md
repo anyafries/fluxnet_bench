@@ -48,8 +48,6 @@ python3 run_experiment.py --agg seasonal --setting loso --start 5 --stop 10 --mo
 
 Some intermediate results are stored in `results/`.
 
-TODO: cross-validation
-
 ## How do I add my own model?
 
 In `run_experiment.py`:
