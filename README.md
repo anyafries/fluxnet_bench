@@ -80,3 +80,9 @@ For example, the following evaluates any sites that have been evaluated at the s
 ```
 python3 eval.py --agg seasonal --setting loso
 ```
+
+# References
+
+Pastorello, G. et al. (2017) ‘The FLUXNET2015 dataset: The longest record of global carbon, water, and energy fluxes is updated’, Eos, 98.
+
+Pastorello, G. et al. (2020) ‘The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data’, Scientific Data, 7(1), p. 225. Available at: https://doi.org/10.1038/s41597-020-0534-3.
