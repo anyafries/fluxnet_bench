@@ -1,5 +1,11 @@
 # FLUXNET benchmark
 
+> A benchmark for domain generalization on FLUXNET ecosystem data.
+
+The FLUXNET benchmark is a framework for evaluating machine learning models on FLUXNET ecosystem data. It standardises preprocessing and provides common experimental setups (random split per site, temporal holdout, leave-one-site-out) to ensure fair comparison. The benchmark is designed to test how well models generalize in predicting GPP across sites and time.
+
+Information about the FLUXNET data: https://pad.gwdg.de/s/yuCtk9fj5
+
 ## Required packages
 
 ```python
@@ -11,8 +17,6 @@ python3 -m pip install -r requirements.txt
 ## Preprocessing data
 
 The data needs to be copied into the main directory in the "data" folder.
-
-Information about the FLUXNET data: https://pad.gwdg.de/s/yuCtk9fj5
 
 Run the following to obtain the cleaned raw, daily, and seasonal datasets. (This takes a while.)
 
