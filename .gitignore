@@ -1,6 +1,9 @@
+.DS_Store
 data/*
 data_cleaned/*
 fluxnet_bench_venv/*
-__pycache__/*
+maxRM-RF-fluxnet*
+*pycache*
 results/*
-.DS_Store
+tests/QuickEval/data/*
+tests/QuickEval/results/*
