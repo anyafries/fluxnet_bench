@@ -18,6 +18,10 @@ G1 = ['US-Tw1', 'US-Snf', 'CH-Cha', 'DE-Rns', 'US-xDL', 'US-Tw5', 'US-KLS', 'US-
 G2 = ['US-CS3', 'US-A74', 'CZ-BK1', 'CA-TP3', 'SE-Nor', 'DE-Gri', 'US-CS2', 'CA-HPC', 'CA-BOU', 'US-StJ', 'DE-Hzd', 'FR-Tou', 'AU-Whr', 'ES-Abr', 'US-xWD', 'US-CS5', 'AU-GWW', 'DE-RuR', 'US-RGo', 'BE-Dor', 'US-Syv', 'US-EDN', 'US-CS1', 'IT-BCi', 'US-CS4']
 G3 = ['AR-TF1', 'AT-Neu', 'AU-ASM', 'AU-Boy', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-Lit', 'AU-Lon', 'AU-Rgf', 'AU-War', 'AU-Wom', 'BR-Npw', 'CA-Cbo', 'NL-Loo', 'PE-QFR', 'CA-DB2', 'CA-DBB', 'CA-EM1', 'CA-ER1', 'CA-LP1', 'CA-SCB', 'CA-SCC', 'CA-TP1', 'CA-TPD']
 G4 = ['CH-Dav', 'CZ-KrP', 'CZ-Lnz', 'CZ-RAJ', 'BE-Bra', 'BE-Lon', 'CZ-Stn', 'CZ-wet', 'DE-Geb', 'DE-HoH', 'DE-Kli', 'DE-Msr', 'DE-Obe', 'DE-RuS', 'DE-Tha', 'DK-Sor', 'DK-Vng', 'ES-Agu', 'ES-LJu', 'ES-LM1', 'ES-LM2', 'FI-Hyy', 'FI-Let', 'FI-Qvd', 'FI-Sii']
+G1.sort()
+G2.sort()
+G3.sort()
+G4.sort()
 
 # For all sites we also use the following
 
@@ -27,6 +31,12 @@ G7 = ['US-CdM', 'US-Cst', 'US-DFC', 'US-DS3', 'US-Dmg', 'US-EML', 'US-GLE', 'US-
 G8 = ['US-Mo3', 'US-Mpj', 'US-NC3', 'US-NC4', 'US-NGB', 'US-NGC', 'US-NR1', 'US-Ne1', 'US-ONA', 'US-ORv', 'US-Pnp', 'US-RGA', 'US-RGB', 'US-RGW', 'US-RRC', 'US-Rls', 'US-Rms', 'US-Ro1', 'US-Ro2', 'US-Ro4', 'US-Ro5', 'US-Ro6', 'US-Rwf', 'US-Rws', 'US-SP1']
 G9 = ['US-SRG', 'US-SRM', 'US-SRS', 'US-Ses', 'US-Srr', 'US-Ton', 'US-UC1', 'US-UC2', 'US-UMB', 'US-UMd', 'US-Var', 'US-Vcm', 'US-Vcp', 'US-Whs', 'US-Wkg', 'US-YK2', 'US-xAB', 'US-xAE', 'US-xBA', 'US-xBL', 'US-xBN', 'US-xBR', 'US-xCL', 'US-xCP', 'US-xDC']
 G10 = ['US-xDJ', 'US-xDS', 'US-xHE', 'US-xJE', 'US-xJR', 'US-xKA', 'US-xKZ', 'US-xMB', 'US-xML', 'US-xNG', 'US-xNQ', 'US-xRM', 'US-xSB', 'US-xSC', 'US-xSE', 'US-xSJ', 'US-xSL', 'US-xSR', 'US-xST', 'US-xTA', 'US-xTR', 'US-xUK', 'US-xUN', 'US-xYE']
+G5.sort()
+G6.sort()
+G7.sort()
+G8.sort()
+G9.sort()
+G10.sort()
 
 # -----------------------------------------------------------------------
 # ------------------ Functions for CV fold generation -------------------
