@@ -1,12 +1,13 @@
 import os
-import logging
 import numpy as np
 import pandas as pd
 import torch
 
+from utils.utils import setup_logging, get_predictions_path, load_csv, save_csv
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-logger = logging.getLogger(__name__)
+logger = setup_logging(__name__)
 
 # -----------------------------------------------------------------------
 # --------- Predefined spatial groups for "spatial" CV setting ----------
@@ -79,46 +80,71 @@ def generate_fold_info(df, setting, fold_size=5, seed=42):
 # ------------------ Functions for getting fold data --------------------
 # -----------------------------------------------------------------------
 
-def get_fold_df(
+def get_data_split(
     df,
     setting,
-    group,
     target="GPP",
     remove_missing=False,
     astorch=False,
-    min_samples=None,
+    return_metadata=False,
 ):
     """
-    Get the train/test data for a specific fold and setting.
+    Get the train/test data for a specific setting.
     Args:
         df (pd.DataFrame): The input dataframe containing the data.
         setting (str): The cross-validation setting.
-        group: The group identifier (site_id, list of site_ids, etc.) for the fold.
-        target (str, optional): The target variable name. 
+        target (str, optional): The target variable name.
             Defaults to "GPP".
-        cv (bool, optional): Whether to perform cross-validation split. 
+        remove_missing (bool, optional): Whether to remove rows with missing values.
             Defaults to False.
-        remove_missing (bool, optional): Whether to remove rows with missing values. 
+        astorch (bool, optional): Whether to return data as PyTorch tensors.
             Defaults to False.
-        astorch (bool, optional): Whether to return data as PyTorch tensors. 
-            Defaults to False.
-        num (bool, optional): Whether to return numerical data only. 
-            Defaults to False.
-        min_samples (int, optional): Minimum number of samples per site for inclusion. 
-            Defaults to None.
+        return_metadata (bool, optional): If True, also return site_id and time
+            arrays for the test set. Defaults to False.
     Returns:
-        tuple: xtrain, ytrain, xtest, ytest, train_ids, test_ids
+        tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
+            If return_metadata=True: also includes sites_test, times_test
     """
+    # Generate fold info and get group
+    
+
+    # Determine min_samples based on setting
+    # TODO[LATER]: should be handled by the cleaned data
+    min_samples = 100
+    if setting == "time-split":
+        raise NotImplementedError("time-split setting not implemented yet")
+    elif setting == "spatial-easy":
+        group = generate_fold_info(df, setting)[0]
+    elif setting == "spatial-hard":
+        # group = [
+        #     'AU-ASM', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-GWW', 'AU-Lit', 
+        #     'AU-Rgf', 'AU-War', 'AU-Wom', 'AU-Whr', 'AU-Dry', 'AU-Boy', 
+        #     'AU-Lon', 'AR-TF1', 'CL-SDF', 'PE-QFR', 'BR-Npw', 'US-Bar', 
+        #     'RU-Fy2', 'IL-Yat', 'ES-LJu', 'US-Tw4', 'FI-Sii', 'CZ-wet'
+        # ]
+        # group = [
+        #     'BR-Npw', 'FR-Lam', 'PE-QFR', 'FR-Mej', 'AU-DaS', 'AU-ASM', 
+        #     'IL-Yat', 'US-SRM', 'US-Whs', 'ES-LJu', 'CZ-wet', 'FI-Sii', 
+        #     'US-Tw1', 'US-Tw4', 'CA-SCC', 'US-Bar', 'US-NR1', 'AR-TF1', 
+        #     'RU-Fy2', 'FI-Var', 'US-ARM', 'US-Kon', 'JP-BBY', 'CL-SDF'
+        # ]
+        group = [ # 25 southern most sites
+            'AU-ASM', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-GWW', 'AU-Lit', 
+            'AU-Rgf', 'AU-War', 'BR-Npw', 'AU-Wom', 'AU-Whr', 'AR-TF1', 
+            'AU-Dry', 'CL-SDF', 'AU-Boy', 'AR-CCg', 'AU-Lon', 'PE-QFR', 
+            'FR-Mej', 'FR-Lam', 'US-ONA', 'US-KS3', 'US-SP1', 'IL-Yat' 
+        ]
+    else:
+        raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
+
     # Subset the correct data
-    if setting in ["spatial-easy"]:
+    if setting in ["spatial-easy", "spatial-hard"]:
         df_out = df.copy()
-    elif setting in ["spatial-hard"]:
-        raise NotImplementedError("spatial-hard setting not implemented yet")
     elif setting == "time-split":
         # group is a list of sites with enough years
         df_out = df.loc[df["site_id"].isin(group)].copy()
     else:
-        raise ValueError(f"Setting `{setting}` not recognized in get_fold_df")
+        raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
 
     # drop rows where target is missing
     nstart = df_out.shape[0]
@@ -160,9 +186,15 @@ def get_fold_df(
                 f"* Dropped {nstart-nout}/{nstart} ({(nstart-nout)/nstart * 100:.2f}%) rows due to missingness"
             )
 
+    # Preserve time column if needed for metadata
+    if return_metadata and "time" in df_out.columns:
+        time_col = df_out["time"].copy()
+    else:
+        time_col = None
+
     # drop columns
     for col in ["date", "hour", "time", "longitude", "latitude"]:
-        if col in df.columns:
+        if col in df_out.columns:
             df_out.drop(columns=[col], inplace=True)
 
     # split into train/test
@@ -176,6 +208,8 @@ def get_fold_df(
             logger.warning(
                 f"* SKIPPING {group}: only {n_years} years with >= {min_samples} samples"
             )
+            if return_metadata:
+                return None, None, None, None, None, None, None, None
             return None, None, None, None, None, None
         unique_years = np.sort(site_years)
         train_years, test_years = unique_years[:3], unique_years[3:7]
@@ -186,13 +220,15 @@ def get_fold_df(
         if min_samples is not None:
             site_counts = df_out["site_id"].value_counts()
             valid_sites = site_counts[site_counts >= min_samples].index
-            logging.info(f"Keeping {len(valid_sites)}/{len(site_counts)} sites with >= {min_samples} samples")
+            logger.info(f"Keeping {len(valid_sites)}/{len(site_counts)} sites with >= {min_samples} samples")
             df_out = df_out.loc[df_out["site_id"].isin(valid_sites)].copy()
 
         train = df_out.loc[~df_out["site_id"].isin(group)].copy()
         test = df_out.loc[df_out["site_id"].isin(group)].copy()
         if test.shape[0] == 0:
             logger.warning(f"* SKIPPING {group}: no test data")
+            if return_metadata:
+                return None, None, None, None, None, None, None, None
             return None, None, None, None, None, None
     del df_out
 
@@ -201,9 +237,14 @@ def get_fold_df(
         env_col = "year"
     else:
         env_col = "site_id"
-    train_ids = train[env_col]
-    test_ids = test[env_col].copy()
-    
+    envs_train = train[env_col]
+    envs_test = test[env_col].copy()
+
+    # Extract metadata before dropping columns
+    if return_metadata:
+        sites_test = test["site_id"].copy()
+        times_test = time_col.loc[test.index] if time_col is not None else None
+
     for col in ["site_id", "year", "month"]:
         if col in train.columns:
             train = train.drop(columns=[col])
@@ -237,4 +278,74 @@ def get_fold_df(
         xtest = torch.tensor(xtest, dtype=torch.float32)
         ytest = torch.tensor(ytest, dtype=torch.float32).view(-1, 1)
 
-    return xtrain, ytrain, xtest, ytest, train_ids, test_ids
+    # Filter out rows with NaN in test features
+    # TODO[LATER]: handle missing values properly in data already
+    feature_mask = ~np.isnan(xtest).any(axis=1)
+    xtest = xtest[feature_mask]
+    ytest = ytest[feature_mask]
+    envs_test = envs_test.values[feature_mask]
+
+    if return_metadata:
+        sites_test = sites_test.values[feature_mask]
+        times_test = times_test.values[feature_mask] if times_test is not None else None
+        return sites_test, times_test, envs_test, ytest
+
+    return xtrain, ytrain, envs_train, xtest, ytest, envs_test
+
+# -----------------------------------------------------------------------
+# -------------------------- Predictions I/O ----------------------------
+# -----------------------------------------------------------------------
+
+
+def get_test_metadata(df, setting, target="GPP"):
+    """
+    Get test set metadata (site_id, time, env, y_true) for a setting.
+
+    Args:
+        df: DataFrame with the data
+        setting: Experiment setting ('spatial-easy', 'time-split', etc.)
+        target: Target variable name
+
+    Returns:
+        tuple: (site_id, time, env, y_true) arrays for the test set
+    """
+    result = get_data_split(df, setting, target=target, return_metadata=True)
+    if result[0] is None:
+        return None, None, None, None
+    sites_test, times_test, envs_test, ytest = result
+    return sites_test, times_test, envs_test, ytest
+
+
+def load_predictions(setting, target, model_name):
+    """
+    Load predictions file for a given experiment.
+
+    Args:
+        setting: Experiment setting (e.g., 'spatial-easy', 'time-split')
+        target: Target variable (e.g., 'GPP', 'NEE')
+        model_name: Model name (e.g., 'lr', 'xgb')
+
+    Returns:
+        pd.DataFrame with y_true, y_pred, and env columns
+    """
+    pred_path = get_predictions_path(setting, target, model_name)
+    df = load_csv(pred_path)
+    if df is None:
+        raise FileNotFoundError(f"Predictions file not found: {pred_path}")
+    return df
+
+
+def save_predictions(df, ypred, setting, target, model_name):
+    """Save predictions DataFrame to CSV."""
+    site_id, time, env, y_true = get_test_metadata(df, setting, target)
+    predictions_df = pd.DataFrame({
+        'y_true': y_true,
+        'y_pred': ypred,
+        'env': env,
+        'site_id': site_id,
+        'time': time,
+    })
+    
+    pred_path = get_predictions_path(setting, target, model_name)
+    save_csv(predictions_df, pred_path)
+    return predictions_df
