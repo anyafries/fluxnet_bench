@@ -1,6 +1,8 @@
-# FLUXNET benchmark
+# FLUXNET Benchmark for Domain Generalization
 
-The FLUXNET benchmark is a framework for evaluating machine learning models on FLUXNET ecosystem data. It standardises preprocessing and provides common experimental setups (random split per site, temporal holdout, leave-one-site-out) to ensure fair comparison. The benchmark is designed to test how well models generalize in predicting GPP across sites and time.
+The FLUXNET benchmark is a framework for evaluating machine learning models under distribution shift using FLUXNET ecosystem flux data. It provides standardized data preprocessing, train/test splits, and evaluation metrics to enable fair comparison of domain generalization methods.
+
+The benchmark tests model performance on predicting **GPP (Gross Primary Productivity), ET (Evapotranspiration), and NEE (Net Ecosystem Exchange)** across different temporal and spatial splits.
 
 Information about the FLUXNET data: https://pad.gwdg.de/s/yuCtk9fj5
 
@@ -32,33 +34,38 @@ Run an experiment, i.e., train the model and test on unseen data.
 python3 run_experiment.py
 ```
 
-Optional arguments
-* `--agg`: raw, daily, seasonal
-* `--setting`: 
-    - insite: for a given site, split the data 80/20 (keeping time order), train on the first 80%, test on the last 20%
-    - insite-random: for a given site, split the data 80/20 randomly
-    - loso: train on all sites except one, evaluate on that site (slower)
-* `--start`, `--stop`: which groups to run the experiment on
-* `--model_name`: lr, xgb 
+Optional arguments:
+* `--agg`: raw, daily, seasonal (default: seasonal)
+* `--setting`:
+    - `insite`: for a given site, split the data 80/20 (keeping time order), train on the first 80%, test on the last 20%
+    - `insite-random`: for a given site, split the data 80/20 randomly
+    - `loso`: train on all sites except one, evaluate on that site (slower)
+    - `logo`: leave-one-group-out (balanced clusters)
+* `--start`, `--stop`: which groups/sites to run the experiment on
+* `--model_name`: lr, xgb (default: xgb)
+* `--params`: path to CSV file with model parameters (optional)
 
-For example, the following runs leave-one-site-out linear regression for the 5th-10th sites on seasonal data: 
+For example, the following runs leave-one-site-out linear regression for the 5th-10th sites on seasonal data:
 
-```
-python3 run_experiment.py --agg seasonal --setting loso --start 5 --stop 10 --model lr
+```bash
+python run_experiment.py --agg seasonal --setting loso --start 5 --stop 10 --model_name lr
 ```
 
 Some intermediate results are stored in `results/`.
 
 ## How do I add my own model?
 
-In `run_experiment.py`:
-1. Line 27: add your model to the `get_model(model, params={})`. 
-2. Line 43: add the model parameters to `get_default_params(model)` (ignore cv argument, not implemented yet)
+In `models.py`:
+1. Add your model class (see `LinearModel` or `XGBoostModel` as examples)
+2. Add your model to `get_model(model_name, params)` function
+3. Add default parameters to `get_default_params(model_name)` function
 
-That's all! Then run 
+That's all! Then run:
+```bash
+python run_experiment.py --model_name your_model --agg seasonal --setting insite
 ```
-python3 run_experiment.py --model your_model_name
-```
+
+See [examples/](examples/) for a complete custom model example.
 
 ## Evaluation
 
