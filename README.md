@@ -55,10 +55,9 @@ Some intermediate results are stored in `results/`.
 
 ## How do I add my own model?
 
-In `models.py`:
-1. Add your model class (see `LinearModel` or `XGBoostModel` as examples)
-2. Add your model to `get_model(model_name, params)` function
-3. Add default parameters to `get_default_params(model_name)` function
+In `run_experiment.py`:
+1. Line 27: add your model to the `get_model(model, params={})`. 
+2. Line 43: add the model parameters to `get_default_params(model)` 
 
 That's all! Then run:
 ```bash
