@@ -1,9 +1,15 @@
+# virtual environments & clean up
+fluxnet_bench_venv/*
+*pycache*
 .DS_Store
+
+# big folders
 data/*
 data_cleaned/*
-fluxnet_bench_venv/*
-maxRM-RF-fluxnet*
-*pycache*
 results/*
 tests/QuickEval/data/*
 tests/QuickEval/results/*
+
+# other projects
+maxRM-RF-fluxnet*
+archive*
