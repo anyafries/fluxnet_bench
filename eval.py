@@ -1,74 +1,124 @@
 """
-Evaluation metrics for FLUXNET benchmark.
+Script to load and compare results from multiple experiments.
 
-This module contains functions to evaluate model predictions using
-various metrics including MSE, RMSE, R², MAE, and NSE (Nash-Sutcliffe Efficiency).
+This script loads pre-computed metrics if available, or computes them from
+predictions. Results are saved to results/metrics/ for subsequent runs.
+
+Usage:
+    python eval.py --setting spatial-easy --target GPP
 """
 
-import logging
-import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, r2_score
 
-logger = logging.getLogger(__name__)
+from dataloader import load_predictions
+from utils.eval_utils import load_metrics, compute_and_save_metrics
+from utils.plots import plot_metric_grid, plot_cdf_grid, create_leaderboard
+from utils.utils import setup_logging, find_available_experiments
+
+logger = setup_logging(__name__)
+
+def get_metrics(setting, target, model_name, override=False):
+    """Get metrics for an experiment, computing if necessary."""
+    # Try loading existing metrics
+    if not override:
+        metrics_df = load_metrics(setting, target, model_name)
+        if metrics_df is not None:
+            return metrics_df
+
+    # Load predictions
+    predictions_df = load_predictions(setting, target, model_name)
+    if predictions_df is None:
+        return None
+
+    # Compute and save metrics
+    metrics_df = compute_and_save_metrics(predictions_df, setting, target, model_name)
+    
+    return metrics_df
 
 
-def nse(ytrue, ypred):
+def load_all_metrics(settings=None, targets=None, models=None, scales=None, override=False):
     """
-    Calculate Nash-Sutcliffe Efficiency (NSE).
-
-    NSE is commonly used in hydrology and is equivalent to R² but
-    provides a different interpretation for model performance.
+    Load or compute metrics for all specified experiments.
 
     Args:
-        ytrue (array-like): True values
-        ypred (array-like): Predicted values
+        settings: List of settings to include (default: all found)
+        targets: List of targets to include (default: all found)
+        models: List of models to include (default: all found)
+        scales: List of scales to include (default: all scales in data)
+        override: If True, recompute all metrics from predictions
 
     Returns:
-        float: NSE value (ranges from -inf to 1, where 1 is perfect)
+        pd.DataFrame with all metrics combined
     """
-    numerator = np.sum((ytrue - ypred) ** 2)
-    denominator = np.sum((ytrue - np.mean(ytrue)) ** 2)
-    return 1 - (numerator / denominator)
+    available = find_available_experiments()
+    if not available:
+        logger.error("No experiments found in results/")
+        return pd.DataFrame()
+
+    # Filter experiments
+    if settings:
+        available = [(s, t, m) for s, t, m in available if s in settings]
+    if targets:
+        available = [(s, t, m) for s, t, m in available if t in targets]
+    if models:
+        available = [(s, t, m) for s, t, m in available if m in models]
+
+    logger.info(f"Processing {len(available)} experiments")
+
+    all_results = []
+    for setting, target, model_name in available:
+        metrics_df = get_metrics(setting, target, model_name, override=override)
+        if metrics_df is not None:
+            if scales and 'scale' in metrics_df.columns:
+                metrics_df = metrics_df[metrics_df['scale'].isin(scales)]
+            all_results.append(metrics_df)
+
+    if all_results:
+        return pd.concat(all_results, ignore_index=True)
+
+    return pd.DataFrame()
 
 
-def evaluate_fold(ytrue, ypred, env, verbose=True, digits=3):
-    """
-    Evaluate predictions for multiple sites.
+if __name__ == "__main__":
+    import argparse
 
-    Computes multiple metrics including MSE, RMSE, R², MAE, relative error, and NSE.
+    parser = argparse.ArgumentParser(
+        description="Load and compare results from FLUXNET experiments"
+    )
+    parser.add_argument("--setting", type=str, default=None,
+                        help="Filter by setting (e.g., 'spatial-easy')")
+    parser.add_argument("--target", type=str, default=None,
+                        help="Filter by target (e.g., 'GPP')")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Filter by model (e.g., 'lr')")
+    parser.add_argument("--scale", type=str, default=None,
+                        help="Filter by scale (e.g., 'daily', 'weekly', 'monthly')")
+    parser.add_argument("--override", action='store_true',
+                        help="Recompute metrics from predictions")
 
-    Args:
-        ytrue (array-like): True values
-        ypred (array-like): Predicted values
-        verbose (bool): If True, log the results
-        digits (int): Number of decimal places for logging
+    args = parser.parse_args()
 
-    Returns:
-        dict: Dictionary containing all computed metrics
-    """
-    out = []
-    for e in np.unique(env):
-        mask = env == e
-        ytrue_e = ytrue[mask]
-        ypred_e = ypred[mask]
-        
-        mse = mean_squared_error(ytrue_e, ypred_e)
-        results = {
-            'mse': mse,
-            'rmse': np.sqrt(mse),
-            'r2_score': r2_score(ytrue_e, ypred_e),
-            'relative_error': np.mean(np.abs(ytrue_e - ypred_e) / np.abs(ytrue_e)),
-            'mae': np.mean(np.abs(ytrue_e - ypred_e)),
-            'nse': nse(ytrue_e, ypred_e)
-        }
-        if verbose:
-            logger.info(f"  Env: {e} over {len(ytrue_e)} predictions:")
-            logger.info(f"* RESULTS over {len(ytrue)} predictions:")
-            logger.info("\t " + ", ".join(
-                f"{metric.upper()}={value:.{digits}f}"
-                for metric, value in results.items()
-            ))
-        results['env'] = e
-        out.append(results)
-    return pd.DataFrame(out)
+    # Parse filters
+    settings = [args.setting] if args.setting else None
+    targets = [args.target] if args.target else None
+    models = [args.model] if args.model else None
+    scales = [args.scale] if args.scale else None
+
+    # Load results
+    results = load_all_metrics(
+        settings=settings,
+        targets=targets,
+        models=models,
+        scales=scales,
+        override=args.override,
+    )
+
+    print(results.head())
+    print(results.tail())
+
+    # Generate plots for all targets
+    for target in results['target'].unique():
+        plot_metric_grid(results, target)
+        plot_cdf_grid(results, target, scale='daily', metric='rmse')
+        create_leaderboard(results, target, metric='rmse', 
+                           filename='results/plots/medals.html')
