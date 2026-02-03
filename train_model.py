@@ -21,10 +21,10 @@ if __name__ == "__main__":
                         help="Override existing results")
     parser.add_argument("--setting", type=str,
                         choices=['time-split', 'spatial-easy', 'spatial-hard', 'all'],
-                        default='time-split', help="Experiment setting")
+                        default='all', help="Experiment setting")
     parser.add_argument("--target", type=str, choices=['GPP', 'NEE', 'Qle', 'all'],
                         default='all', help="Target variable to predict")
-    parser.add_argument("--model_name", type=str, choices=['xgb', 'lr'],
+    parser.add_argument("--model_name", type=str, choices=['xgb', 'lr', 'mlp', 'gdro'],
                         default='lr', help="Model to use for the experiment")
 
     args = parser.parse_args()
@@ -34,8 +34,10 @@ if __name__ == "__main__":
     settings = ALL_SETTINGS if args.setting == 'all' else [args.setting]
     targets = ALL_TARGETS if args.target == 'all' else [args.target]
 
-    # Get model parameters
-    params = get_default_params(model_name)
+    # Load data
+    data_path = os.path.join(args.path, "daily.csv")
+    logger.info(f"Loading data from {data_path}...")
+    df = pd.read_csv(data_path)
 
     # Run experiments
     for setting in settings:
@@ -47,11 +49,6 @@ if __name__ == "__main__":
                 logger.info(f"Results for {exp_name} already exist. Use --override to overwrite.")
                 continue
 
-            # Load data
-            data_path = os.path.join(args.path, "daily.csv")
-            logger.info(f"Loading data from {data_path}...")
-            df = pd.read_csv(data_path).dropna(subset=[target])
-
             # TODO[LATER]: this function will change depending on how we store the data, and the preprocessing we do before
             #       -> NB: before replacing, make sure to do all the data checks this function does
             xtrain, ytrain, envs_train, xtest, ytest, envs_test = get_data_split(
@@ -61,9 +58,12 @@ if __name__ == "__main__":
                 target=target,
             )
 
-            # Get model
-            model = get_model(model_name, params=params)
-            model.fit(xtrain, ytrain)
+            # Get model and train
+            model = get_model(model_name)
+            if model_name in ['lr', 'xgb']:
+                model.fit(xtrain, ytrain)
+            else:
+                model.fit(xtrain, ytrain, envs=envs_train.values)
 
             # Evaluate model
             ypred = model.predict(xtest)

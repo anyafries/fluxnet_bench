@@ -18,6 +18,9 @@ SCALES = ['daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav']
 # Model ordering: lr first, xgb second, then alphabetically
 MODEL_ORDER = ['lr', 'xgb']
 
+# Setting ordering: time-split, spatial-easy, spatial-hard
+SETTINGS_ORDER = ['time-split', 'spatial-easy', 'spatial-hard']
+
 # Metrics where higher is better (affects sorting direction and labels)
 HIGHER_IS_BETTER = {'nse', 'r2_score', 'pearson_corr'}
 
@@ -30,12 +33,20 @@ def get_ordered_models(models):
     return ordered + remaining
 
 
+def get_ordered_settings(settings):
+    """Order settings: time-split, spatial-easy, spatial-hard, then alphabetically."""
+    settings = list(settings)
+    ordered = [s for s in SETTINGS_ORDER if s in settings]
+    remaining = sorted([s for s in settings if s not in SETTINGS_ORDER])
+    return ordered + remaining
+
+
 def is_higher_better(metric):
     """Check if higher values are better for this metric."""
     return metric.lower() in HIGHER_IS_BETTER
 
 
-def plot_metric_by_setting(results, target, metric, scale, ax, legend=False):
+def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', legend=False):
     """
     Plot metric across settings for one scale (single subplot).
 
@@ -44,6 +55,7 @@ def plot_metric_by_setting(results, target, metric, scale, ax, legend=False):
         target: Target variable to filter (e.g., 'GPP')
         metric: Metric column name (e.g., 'rmse')
         scale: Temporal scale to filter (e.g., 'daily')
+        agg: Aggregation function to apply (default: 'median')
         ax: Matplotlib axes to plot on
     """
     subset = results[(results['target'] == target) & (results['scale'] == scale)]
@@ -54,20 +66,24 @@ def plot_metric_by_setting(results, target, metric, scale, ax, legend=False):
     data = (
         subset
         .groupby(['setting', 'model'])[metric]
-        .median()
+        .agg(agg)
         .reset_index()
     )
 
     hue_order = get_ordered_models(data['model'].unique())
+    data['setting'] = pd.Categorical(data['setting'], categories=SETTINGS_ORDER, ordered=True)
+    data = data.sort_values('setting')
     for i, plot_func in enumerate([sns.lineplot, sns.scatterplot]):
         plot_func(data=data, x='setting', y=metric, ax=ax, hue='model',
                   hue_order=hue_order, legend=legend&(i==1))
 
+    ax.set_xticks(range(len(SETTINGS_ORDER)))
+    ax.set_xticklabels(SETTINGS_ORDER)
     ax.set_title(scale)
     ax.set_xlabel('')
 
 
-def plot_metric_grid(results, target, metric='rmse', outdir=PLOTS_DIR):
+def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_DIR):
     """
     Create 3x2 grid showing metric across settings for all scales.
 
@@ -75,6 +91,7 @@ def plot_metric_grid(results, target, metric='rmse', outdir=PLOTS_DIR):
         results: DataFrame with results
         target: Target variable (e.g., 'GPP')
         metric: Metric to plot (default: 'rmse')
+        agg: Aggregation function to apply (default: 'median')
         outdir: Output directory for saved plot
     """
     os.makedirs(outdir, exist_ok=True)
@@ -84,13 +101,13 @@ def plot_metric_grid(results, target, metric='rmse', outdir=PLOTS_DIR):
 
     for i, scale in enumerate(SCALES):
         plot_metric_by_setting(results, target, metric, scale, axes[i],
-                               legend=(i == 0))
+                               agg=agg, legend=(i == 0))
     axes[0].legend(title='')
 
     fig.suptitle(f"{target}")
     plt.tight_layout()
 
-    outfile = os.path.join(outdir, f"{target}_{metric}_by_scale.png")
+    outfile = os.path.join(outdir, f"{agg}_{target}_{metric}_by_scale.png")
     plt.savefig(outfile, dpi=150)
     plt.close(fig)
     logger.info(f"Saved: {outfile}")
@@ -140,10 +157,11 @@ def plot_cdf(results, target, metric, scale, setting, ax):
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
     ax.set_xlabel(f'{metric.upper()} (x)')
 
+    env = "sites" if setting.startswith('spatial') else "site-years"
     if higher_better:
-        ax.set_ylabel(f'% envs with {metric.upper()} >= x')
+        ax.set_ylabel(f'% of {env} with {metric.upper()} >= x')
     else:
-        ax.set_ylabel(f'% envs with {metric.upper()} <= x')
+        ax.set_ylabel(f'% of {env} with {metric.upper()} <= x')
 
     if metric.lower() == 'nse':
         ax.set_xlim(-0.5, 1.0)
@@ -198,10 +216,11 @@ def plot_quantile(results, target, metric, scale, setting, ax, y_limit=None):
     ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
 
+    env = "sites" if setting.startswith('spatial') else "site-years"
     if higher_better:
-        ax.set_xlabel(f'% of sites with {metric.upper()} >= y')
+        ax.set_xlabel(f'% of {env} with {metric.upper()} >= y')
     else:
-        ax.set_xlabel(f'% of sites with {metric.upper()} <= y')
+        ax.set_xlabel(f'% of {env} with {metric.upper()} <= y')
 
     if metric.lower() == 'nse':
         ax.set_ylim(-0.5, 1.0)
@@ -231,7 +250,7 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
 
     # Get available settings for this target/scale
     subset = results[(results['target'] == target) & (results['scale'] == scale)]
-    settings = sorted(subset['setting'].unique())
+    settings = get_ordered_settings(subset['setting'].unique())
 
     if len(settings) == 0:
         logger.warning(f"No data for {target} at {scale} scale")
@@ -261,6 +280,7 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
 # TODO: clean up to match style of other functions
 # TODO: would actually be nice if this whole thing was transposed 
 # TODO: make more modular/general -> only for one scale for example
+# TODO: handle ties in medal rankings
 # https://pandas.pydata.org/docs/user_guide/style.html
 def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     # --- 1. Data Preparation ---
@@ -268,7 +288,7 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     subset = df[df['target'] == target]
     
     # Pivot: Index=Model, Cols=(Setting, Scale), Values=Metric
-    settings = subset['setting'].unique()
+    settings = get_ordered_settings(subset['setting'].unique())
     scales = subset['scale'].unique()
     cols = pd.MultiIndex.from_product([settings, scales], names=['', ''])
     pivot_df = subset.pivot_table(

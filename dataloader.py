@@ -57,6 +57,7 @@ def generate_fold_info(df, setting, fold_size=5, seed=42):
     if setting in ["time-split"]:
         sites = df["site_id"].dropna().unique()
         # only keep sites with >=7 years of data
+        # TODO: it should also be where each (site, year) has enough samples
         site_years = df.groupby("site_id")["year"].nunique()
         sites = site_years[site_years >= 7].index.values
         sites = sorted(sites)
@@ -105,29 +106,14 @@ def get_data_split(
         tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
             If return_metadata=True: also includes sites_test, times_test
     """
-    # Generate fold info and get group
-    
-
     # Determine min_samples based on setting
     # TODO[LATER]: should be handled by the cleaned data
     min_samples = 100
     if setting == "time-split":
-        raise NotImplementedError("time-split setting not implemented yet")
+        group = generate_fold_info(df, setting)[0]
     elif setting == "spatial-easy":
         group = generate_fold_info(df, setting)[0]
     elif setting == "spatial-hard":
-        # group = [
-        #     'AU-ASM', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-GWW', 'AU-Lit', 
-        #     'AU-Rgf', 'AU-War', 'AU-Wom', 'AU-Whr', 'AU-Dry', 'AU-Boy', 
-        #     'AU-Lon', 'AR-TF1', 'CL-SDF', 'PE-QFR', 'BR-Npw', 'US-Bar', 
-        #     'RU-Fy2', 'IL-Yat', 'ES-LJu', 'US-Tw4', 'FI-Sii', 'CZ-wet'
-        # ]
-        # group = [
-        #     'BR-Npw', 'FR-Lam', 'PE-QFR', 'FR-Mej', 'AU-DaS', 'AU-ASM', 
-        #     'IL-Yat', 'US-SRM', 'US-Whs', 'ES-LJu', 'CZ-wet', 'FI-Sii', 
-        #     'US-Tw1', 'US-Tw4', 'CA-SCC', 'US-Bar', 'US-NR1', 'AR-TF1', 
-        #     'RU-Fy2', 'FI-Var', 'US-ARM', 'US-Kon', 'JP-BBY', 'CL-SDF'
-        # ]
         group = [ # 25 southern most sites
             'AU-ASM', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-GWW', 'AU-Lit', 
             'AU-Rgf', 'AU-War', 'BR-Npw', 'AU-Wom', 'AU-Whr', 'AR-TF1', 
@@ -145,7 +131,7 @@ def get_data_split(
         df_out = df.loc[df["site_id"].isin(group)].copy()
     else:
         raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
-
+    
     # drop rows where target is missing
     nstart = df_out.shape[0]
     df_out = df_out.dropna(subset=[target])
@@ -172,7 +158,8 @@ def get_data_split(
     # drop any columns that only have missing values
     if any(df_out.isna().mean() == 1):
         logger.warning(
-            f"Column `{df_out.columns[df_out.isna().mean() == 1][0]}` is missing for group {group}: it is being dropped"
+            f"Column `{df_out.columns[df_out.isna().mean() == 1][0]}` is missing.",
+            "It is being dropped."
         )
         df_out = df_out.dropna(axis=1, how="all")
     
@@ -199,19 +186,9 @@ def get_data_split(
 
     # split into train/test
     if setting == "time-split":
+        df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
         # split years chronologically
-        min_years = 7 
-        site_years = df_out["year"].value_counts().sort_index()
-        site_years = site_years.index[site_years >= min_samples]
-        n_years = len(site_years)
-        if n_years < min_years:
-            logger.warning(
-                f"* SKIPPING {group}: only {n_years} years with >= {min_samples} samples"
-            )
-            if return_metadata:
-                return None, None, None, None, None, None, None, None
-            return None, None, None, None, None, None
-        unique_years = np.sort(site_years)
+        unique_years = np.sort(df_out["year"].unique())
         train_years, test_years = unique_years[:3], unique_years[3:7]
         train = df_out.loc[df_out["year"].isin(train_years)].copy()
         test = df_out.loc[df_out["year"].isin(test_years)].copy()
@@ -234,7 +211,7 @@ def get_data_split(
 
     # clean up
     if setting == "time-split":
-        env_col = "year"
+        env_col = "site_year"
     else:
         env_col = "site_id"
     envs_train = train[env_col]
@@ -245,7 +222,7 @@ def get_data_split(
         sites_test = test["site_id"].copy()
         times_test = time_col.loc[test.index] if time_col is not None else None
 
-    for col in ["site_id", "year", "month"]:
+    for col in ["site_id", "year", "month", "site_year"]:
         if col in train.columns:
             train = train.drop(columns=[col])
         if col in test.columns:
