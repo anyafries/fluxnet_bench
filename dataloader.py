@@ -85,7 +85,9 @@ def get_data_split(
     df,
     setting,
     target="GPP",
-    remove_missing=False,
+    remove_missing_features=False,
+    remove_missing_target=False,
+    keep_lonlat=False,
     astorch=False,
     return_metadata=False,
 ):
@@ -96,8 +98,13 @@ def get_data_split(
         setting (str): The cross-validation setting.
         target (str, optional): The target variable name.
             Defaults to "GPP".
-        remove_missing (bool, optional): Whether to remove rows with missing values.
+        remove_missing_features (bool, optional): Whether to remove rows with 
+            missing values.
             Defaults to False.
+        remove_missing_target (bool, optional): Whether to remove rows with
+            missing target values. Defaults to False.
+        keep_lonlat (bool, optional): Whether to keep longitude and latitude
+            features. Defaults to False.
         astorch (bool, optional): Whether to return data as PyTorch tensors.
             Defaults to False.
         return_metadata (bool, optional): If True, also return site_id and time
@@ -106,6 +113,8 @@ def get_data_split(
         tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
             If return_metadata=True: also includes sites_test, times_test
     """
+    # TODO: handle masks here!
+
     # Determine min_samples based on setting
     # TODO[LATER]: should be handled by the cleaned data
     min_samples = 100
@@ -133,14 +142,15 @@ def get_data_split(
         raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
     
     # drop rows where target is missing
-    nstart = df_out.shape[0]
-    df_out = df_out.dropna(subset=[target])
-    nout = df_out.shape[0]
-    if nstart > nout:
-        diff = nstart - nout
-        logger.info(
-            f"* Dropped {diff}/{nstart} ({diff/nstart*100:.2f}%) rows due to missing target `{target}`"
-        )
+    if remove_missing_target:
+        nstart = df_out.shape[0]
+        df_out = df_out.dropna(subset=[target])
+        nout = df_out.shape[0]
+        if nstart > nout:
+            diff = nstart - nout
+            logger.info(
+                f"* Dropped {diff}/{nstart} ({diff/nstart*100:.2f}%) rows due to missing target `{target}`"
+            )
 
     # create time features
     if "season" in df_out.columns:
@@ -154,17 +164,9 @@ def get_data_split(
     if "hour" in df_out.columns:
         df_out["hour_sin"] = np.sin(2 * np.pi * df_out["hour"] / 24)
         df_out["hour_cos"] = np.cos(2 * np.pi * df_out["hour"] / 24)
-
-    # drop any columns that only have missing values
-    if any(df_out.isna().mean() == 1):
-        logger.warning(
-            f"Column `{df_out.columns[df_out.isna().mean() == 1][0]}` is missing.",
-            "It is being dropped."
-        )
-        df_out = df_out.dropna(axis=1, how="all")
     
     # drop rows with any missing values
-    if remove_missing:
+    if remove_missing_features:
         nstart = df_out.shape[0]
         df_out = df_out.dropna(axis=0, how="any")
         nout = df_out.shape[0]
@@ -180,7 +182,10 @@ def get_data_split(
         time_col = None
 
     # drop columns
-    for col in ["date", "hour", "time", "longitude", "latitude"]:
+    cols_to_drop = ["date", "hour", "time"]
+    if not keep_lonlat:
+        cols_to_drop += ["longitude", "latitude"]
+    for col in cols_to_drop:
         if col in df_out.columns:
             df_out.drop(columns=[col], inplace=True)
 
@@ -230,19 +235,7 @@ def get_data_split(
     train = train.astype(np.float64)
     test = test.astype(np.float64) 
 
-    # select x and y columns
-    if (setting == "time-split") and (target == "GPP"):
-        # remove remote sensing variables for GPP in time-split and insite
-        remote_sensing_vars = [
-            "EVI",
-            "NDWI_SWIR1",
-            "NIRv",
-            "LST_Day",
-            "LST_Night"
-        ]
-        xcols = ~train.columns.isin(remote_sensing_vars + ['GPP', 'NEE', 'Qle'])
-    else:
-        xcols = ~train.columns.isin(['GPP', 'NEE', 'Qle'])
+    xcols = ~train.columns.isin(['GPP', 'NEE', 'Qle'])
     ycol = train.columns == target
 
     # split into x,y
@@ -258,9 +251,8 @@ def get_data_split(
     # Filter out rows with NaN in test features
     # TODO[LATER]: handle missing values properly in data already
     feature_mask = ~np.isnan(xtest).any(axis=1)
-    xtest = xtest[feature_mask]
-    ytest = ytest[feature_mask]
-    envs_test = envs_test.values[feature_mask]
+    assert np.isnan(xtest).any(axis=1).sum() == 0, \
+        "There are still NaNs in test features after filtering."
 
     if return_metadata:
         sites_test = sites_test.values[feature_mask]
@@ -286,6 +278,7 @@ def get_test_metadata(df, setting, target="GPP"):
     Returns:
         tuple: (site_id, time, env, y_true) arrays for the test set
     """
+    # TODO add mask_test
     result = get_data_split(df, setting, target=target, return_metadata=True)
     if result[0] is None:
         return None, None, None, None
@@ -314,6 +307,7 @@ def load_predictions(setting, target, model_name):
 
 def save_predictions(df, ypred, setting, target, model_name):
     """Save predictions DataFrame to CSV."""
+    # TODO: add mask
     site_id, time, env, y_true = get_test_metadata(df, setting, target)
     predictions_df = pd.DataFrame({
         'y_true': y_true,
@@ -321,6 +315,7 @@ def save_predictions(df, ypred, setting, target, model_name):
         'env': env,
         'site_id': site_id,
         'time': time,
+        # 'mask': mask,
     })
     
     pred_path = get_predictions_path(setting, target, model_name)
