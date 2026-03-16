@@ -1,92 +1,78 @@
 # FLUXNET Benchmark for Domain Generalization
 
-The FLUXNET benchmark is a framework for evaluating machine learning models under distribution shift using FLUXNET ecosystem flux data. It provides standardized data preprocessing, train/test splits, and evaluation metrics to enable fair comparison of domain generalization methods.
+The FLUXNET benchmark is a framework for evaluating machine learning models under distribution shift using FLUXNET ecosystem flux data. It provides standardized train/test splits and evaluation metrics to enable fair comparison of domain generalization methods.
 
-The benchmark tests model performance on predicting **GPP (Gross Primary Productivity), ET (Evapotranspiration), and NEE (Net Ecosystem Exchange)** across different temporal and spatial splits.
+The benchmark tests model performance on predicting **GPP (Gross Primary Productivity), NEE (Net Ecosystem Exchange), and Qle (Latent Heat Flux)** across different temporal and spatial splits.
 
 Information about the FLUXNET data: https://pad.gwdg.de/s/yuCtk9fj5
 
-## Required packages
+## Setup
 
-```python
+```bash
 python3 -m venv fluxnet_bench_venv
 source fluxnet_bench_venv/bin/activate
 python3 -m pip install -r requirements.txt
 ```
 
-## Preprocessing data
+## Data
 
-The data needs to be copied into the main directory in the "data" folder.
+Instructions on how to obtain the data are coming shortly.
 
-Run the following to obtain the cleaned raw, daily, and seasonal datasets. (This takes a while.)
+## Running experiments
 
-```
-python3 preprocessing.py
-```
+Train a model and evaluate on the test split:
 
-A folder `data_cleaned` with the aggregated datasets will be created.
-
-## Types of experiments
-
-Run an experiment, i.e., train the model and test on unseen data.
-
-```
-python3 run_experiment.py
+```bash
+python3 train_model.py
 ```
 
 Optional arguments:
-* `--agg`: raw, daily, seasonal (default: seasonal)
-* `--setting`:
-    - `insite`: for a given site, split the data 80/20 (keeping time order), train on the first 80%, test on the last 20%
-    - `insite-random`: for a given site, split the data 80/20 randomly
-    - `loso`: train on all sites except one, evaluate on that site (slower)
-    - `logo`: leave-one-group-out (balanced clusters)
-* `--start`, `--stop`: which groups/sites to run the experiment on
-* `--model_name`: lr, xgb (default: xgb)
-* `--params`: path to CSV file with model parameters (optional)
+* `--path`: path to data directory (default: `data/`)
+* `--setting`: distribution shift scenario
+    - `time-split`: train on earlier years, test on later years (chronological split)
+    - `spatial-easy`: leave-one-group-out across 4 predefined site groups
+    - `spatial-hard`: train on northern sites, test on 25 southern sites
+    - `all`: run all three settings (default)
+* `--target`: target variable — `GPP`, `NEE`, `Qle`, or `all` (default: `all`)
+* `--model_name`: `lr`, `xgb`, `mlp`, `gdro` (default: `lr`)
+* `--override`: re-run and overwrite existing results
 
-For example, the following runs leave-one-site-out linear regression for the 5th-10th sites on seasonal data:
+For example, to run XGBoost on the spatial-hard setting for GPP:
 
 ```bash
-python run_experiment.py --agg seasonal --setting loso --start 5 --stop 10 --model_name lr
+python3 train_model.py --setting spatial-hard --target GPP --model_name xgb
 ```
-
-Some intermediate results are stored in `results/`.
-
-## How do I add my own model?
-
-In `run_experiment.py`:
-1. Line 27: add your model to the `get_model(model, params={})`. 
-2. Line 43: add the model parameters to `get_default_params(model)` 
-
-That's all! Then run:
-```bash
-python run_experiment.py --model_name your_model --agg seasonal --setting insite
-```
-
-See [examples/](examples/) for a complete custom model example.
 
 ## Evaluation
 
-To compare any experiments with the given arguments: 
+Metrics are computed automatically after training across multiple temporal scales: **daily, weekly, monthly, seasonal (mean seasonal cycle), anom (anomalies), and iav (inter-annual variability)**.
 
+Results are saved as CSVs in `results/`. Plots are saved to `results/plots/`.
+
+Metrics reported: MSE, RMSE, MAE, NSE, R², bias, relative error.
+
+## Results
+
+### Qle — RMSE across sites (daily scale)
+
+![Qle RMSE Daily CDF](results/plots/Qle_rmse_daily_cdf.png)
+
+### Qle Leaderboard
+
+See [results/plots/medals_Qle.html](results/plots/medals_Qle.html) for the full leaderboard with per-setting rankings.
+
+## How do I add my own model?
+
+1. Add your model class under `models/` (e.g. `models/my_model.py`) following the existing pattern (implement `.fit(X, y)` / `.predict(X)`).
+2. Import it and register it in `get_model()` in `models/__init__.py`.
+3. Run with your model name:
+
+```bash
+python3 train_model.py --model_name your_model
 ```
-python3 eval.py
-``` 
 
-* `----agg`: raw, daily, seasonal
-* `--setting`: insite, loso 
+## References
 
-Output plots will appear in `results/plots_tmp`. There will also be a table of results printed to the terminal.
+Pastorello, G. et al. (2017) 'The FLUXNET2015 dataset: The longest record of global carbon, water, and energy fluxes is updated', Eos, 98.
 
-For example, the following evaluates any sites that have been evaluated at the seasonal aggregation in the leave-one-site-out setting:
-
-```
-python3 eval.py --agg seasonal --setting loso
-```
-
-# References
-
-Pastorello, G. et al. (2017) ‘The FLUXNET2015 dataset: The longest record of global carbon, water, and energy fluxes is updated’, Eos, 98.
-
-Pastorello, G. et al. (2020) ‘The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data’, Scientific Data, 7(1), p. 225. Available at: https://doi.org/10.1038/s41597-020-0534-3.
+Pastorello, G. et al. (2020) 'The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data', Scientific Data, 7(1), p. 225. Available at: https://doi.org/10.1038/s41597-020-0534-3.

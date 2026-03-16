@@ -7,6 +7,10 @@ fluxnet_bench_venv/*
 data/*
 data_cleaned/*
 results/*
+!results/plots/
+results/plots/*
+!results/plots/Qle_rmse_daily_cdf.png
+!results/plots/medals_Qle.html
 tests/QuickEval/data/*
 tests/QuickEval/results/*
 
