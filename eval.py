@@ -27,8 +27,6 @@ def get_metrics(setting, target, model_name, override=False):
 
     # Load predictions
     predictions_df = load_predictions(setting, target, model_name)
-    if predictions_df is None:
-        return None
 
     # Compute and save metrics
     metrics_df = compute_and_save_metrics(predictions_df, setting, target, model_name)
@@ -119,6 +117,7 @@ if __name__ == "__main__":
     # Generate plots for all targets
     for target in results['target'].unique():
         plot_metric_grid(results, target)
+        plot_metric_grid(results, target, agg='max')
         plot_cdf_grid(results, target, scale='daily', metric='rmse')
         create_leaderboard(results, target, metric='rmse', 
-                           filename='results/plots/medals.html')
+                           filename=f'results/plots/medals_{target}.html')
