@@ -89,7 +89,6 @@ def get_data_split(
     remove_missing_target=False,
     keep_lonlat=False,
     astorch=False,
-    return_metadata=False,
 ):
     """
     Get the train/test data for a specific setting.
@@ -107,14 +106,9 @@ def get_data_split(
             features. Defaults to False.
         astorch (bool, optional): Whether to return data as PyTorch tensors.
             Defaults to False.
-        return_metadata (bool, optional): If True, also return site_id and time
-            arrays for the test set. Defaults to False.
     Returns:
         tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
-            If return_metadata=True: also includes sites_test, times_test
     """
-    # TODO: handle masks here!
-
     # Determine min_samples based on setting
     # TODO[LATER]: should be handled by the cleaned data
     min_samples = 100
@@ -176,10 +170,8 @@ def get_data_split(
             )
 
     # Preserve time column if needed for metadata
-    if return_metadata and "time" in df_out.columns:
+    if "time" in df_out.columns:
         time_col = df_out["time"].copy()
-    else:
-        time_col = None
 
     # drop columns
     cols_to_drop = ["date", "hour", "time"]
@@ -209,10 +201,14 @@ def get_data_split(
         test = df_out.loc[df_out["site_id"].isin(group)].copy()
         if test.shape[0] == 0:
             logger.warning(f"* SKIPPING {group}: no test data")
-            if return_metadata:
-                return None, None, None, None, None, None, None, None
-            return None, None, None, None, None, None
+            raise ValueError(f"No test data for group {group}")
     del df_out
+
+    #  for columns GPP, NEE, Qle, make the values np.nan where mask==0
+    for col in ["GPP", "NEE", "Qle"]:
+        train.loc[train["mask"] == 0, col] = np.nan
+        if remove_missing_target:
+            train = train.dropna(subset=[col])
 
     # clean up
     if setting == "time-split":
@@ -223,11 +219,10 @@ def get_data_split(
     envs_test = test[env_col].copy()
 
     # Extract metadata before dropping columns
-    if return_metadata:
-        sites_test = test["site_id"].copy()
-        times_test = time_col.loc[test.index] if time_col is not None else None
+    sites_test = test["site_id"].copy()
+    times_test = time_col.loc[test.index] if time_col is not None else None
 
-    for col in ["site_id", "year", "month", "site_year"]:
+    for col in ["site_id", "year", "month", "site_year", "mask"]:
         if col in train.columns:
             train = train.drop(columns=[col])
         if col in test.columns:
@@ -254,36 +249,14 @@ def get_data_split(
     assert np.isnan(xtest).any(axis=1).sum() == 0, \
         "There are still NaNs in test features after filtering."
 
-    if return_metadata:
-        sites_test = sites_test.values[feature_mask]
-        times_test = times_test.values[feature_mask] if times_test is not None else None
-        return sites_test, times_test, envs_test, ytest
+    sites_test = sites_test.values[feature_mask]
+    times_test = times_test.values[feature_mask] if times_test is not None else None
 
-    return xtrain, ytrain, envs_train, xtest, ytest, envs_test
+    return (xtrain, ytrain, envs_train), (xtest, ytest, envs_test, sites_test, times_test)
 
 # -----------------------------------------------------------------------
 # -------------------------- Predictions I/O ----------------------------
 # -----------------------------------------------------------------------
-
-
-def get_test_metadata(df, setting, target="GPP"):
-    """
-    Get test set metadata (site_id, time, env, y_true) for a setting.
-
-    Args:
-        df: DataFrame with the data
-        setting: Experiment setting ('spatial-easy', 'time-split', etc.)
-        target: Target variable name
-
-    Returns:
-        tuple: (site_id, time, env, y_true) arrays for the test set
-    """
-    # TODO add mask_test
-    result = get_data_split(df, setting, target=target, return_metadata=True)
-    if result[0] is None:
-        return None, None, None, None
-    sites_test, times_test, envs_test, ytest = result
-    return sites_test, times_test, envs_test, ytest
 
 
 def load_predictions(setting, target, model_name):
@@ -305,16 +278,16 @@ def load_predictions(setting, target, model_name):
     return df
 
 
-def save_predictions(df, ypred, setting, target, model_name):
+def save_predictions(test, ypred, setting, target, model_name):
     """Save predictions DataFrame to CSV."""
-    # TODO: add mask
-    site_id, time, env, y_true = get_test_metadata(df, setting, target)
+    # TODO: add mask?
+    xtest, ytest, envs_test, sites_test, times_test = test
     predictions_df = pd.DataFrame({
-        'y_true': y_true,
+        'y_true': ytest,
         'y_pred': ypred,
-        'env': env,
-        'site_id': site_id,
-        'time': time,
+        'env': envs_test,
+        'site_id': sites_test,
+        'time': times_test,
         # 'mask': mask,
     })
     

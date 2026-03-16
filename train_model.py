@@ -35,7 +35,7 @@ if __name__ == "__main__":
     targets = ALL_TARGETS if args.target == 'all' else [args.target]
 
     # Load data
-    data_path = os.path.join(args.path, "daily.csv")
+    data_path = os.path.join(args.path, "daily_with_mask.csv")
     logger.info(f"Loading data from {data_path}...")
     df = pd.read_csv(data_path)
 
@@ -51,12 +51,16 @@ if __name__ == "__main__":
 
             # TODO[LATER]: this function will change depending on how we store the data, and the preprocessing we do before
             #       -> NB: before replacing, make sure to do all the data checks this function does
-            xtrain, ytrain, envs_train, xtest, ytest, envs_test = get_data_split(
+            # train, val, xtest = get_data_split(
+            train, test = get_data_split(
                 df,
                 setting,
-                remove_missing=True,
+                remove_missing_features=False,
+                remove_missing_target=True,
                 target=target,
             )
+            xtrain, ytrain, envs_train = train
+            xtest = test[0]
 
             # Get model and train
             model = get_model(model_name)
@@ -69,6 +73,6 @@ if __name__ == "__main__":
             ypred = model.predict(xtest)
 
             # Save results and predictions
-            preds_df = save_predictions(df, ypred, setting, target, model_name)
+            preds_df = save_predictions(test, ypred, setting, target, model_name)
             metrics_df = compute_and_save_metrics(preds_df, setting, 
                                                   target, model_name)
