@@ -134,17 +134,6 @@ def get_data_split(
         df_out = df.loc[df["site_id"].isin(group)].copy()
     else:
         raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
-    
-    # drop rows where target is missing
-    if remove_missing_target:
-        nstart = df_out.shape[0]
-        df_out = df_out.dropna(subset=[target])
-        nout = df_out.shape[0]
-        if nstart > nout:
-            diff = nstart - nout
-            logger.info(
-                f"* Dropped {diff}/{nstart} ({diff/nstart*100:.2f}%) rows due to missing target `{target}`"
-            )
 
     # create time features
     if "season" in df_out.columns:
@@ -158,16 +147,6 @@ def get_data_split(
     if "hour" in df_out.columns:
         df_out["hour_sin"] = np.sin(2 * np.pi * df_out["hour"] / 24)
         df_out["hour_cos"] = np.cos(2 * np.pi * df_out["hour"] / 24)
-    
-    # drop rows with any missing values
-    if remove_missing_features:
-        nstart = df_out.shape[0]
-        df_out = df_out.dropna(axis=0, how="any")
-        nout = df_out.shape[0]
-        if nstart > nout:
-            logger.info(
-                f"* Dropped {nstart-nout}/{nstart} ({(nstart-nout)/nstart * 100:.2f}%) rows due to missingness"
-            )
 
     # Preserve time column if needed for metadata
     if "time" in df_out.columns:
@@ -209,6 +188,11 @@ def get_data_split(
         train.loc[train["mask"] == 0, col] = np.nan
         if remove_missing_target:
             train = train.dropna(subset=[col])
+
+    # drop rows with any missing values (excluding target if remove_missing_target is False)
+    if remove_missing_features:
+        train = train.dropna(subset=[col for col in train.columns if col != target])
+        test = test.dropna(subset=[col for col in test.columns if col != target])
 
     # clean up
     if setting == "time-split":
