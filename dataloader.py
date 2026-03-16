@@ -243,16 +243,10 @@ def get_data_split(
         xtest = torch.tensor(xtest, dtype=torch.float32)
         ytest = torch.tensor(ytest, dtype=torch.float32).view(-1, 1)
 
-    # Filter out rows with NaN in test features
-    # TODO[LATER]: handle missing values properly in data already
-    feature_mask = ~np.isnan(xtest).any(axis=1)
-    assert np.isnan(xtest).any(axis=1).sum() == 0, \
-        "There are still NaNs in test features after filtering."
-
-    sites_test = sites_test.values[feature_mask]
-    times_test = times_test.values[feature_mask] if times_test is not None else None
-
-    return (xtrain, ytrain, envs_train), (xtest, ytest, envs_test, sites_test, times_test)
+    return (
+        (xtrain, ytrain, envs_train), 
+        (xtest, ytest, envs_test, sites_test, times_test)
+    )
 
 # -----------------------------------------------------------------------
 # -------------------------- Predictions I/O ----------------------------
