@@ -53,13 +53,15 @@ Metrics reported: MSE, RMSE, MAE, NSE, R², bias, relative error.
 
 ## Results
 
-### Qle — RMSE across sites (daily scale)
+### By time scale
+
+Maximum and median RMSE for each time scale are shown in `{max/median}_{target}_by_scale.png`. These are summarized in `medals_{target}.html`. You can download an [example leaderboard](https://github.com/anyafries/fluxnet_bench/blob/main/results/plots/medals_Qle.html) for Qle.
+
+### RMSE CDF at the daily scale
+
+The daily RMSE for the held-out sites/site-years are shown in `{target}_rmse_daily_cdf.png`. For example, for Qle,
 
 ![Qle RMSE Daily CDF](results/plots/Qle_rmse_daily_cdf.png)
-
-### Qle Leaderboard
-
-See [results/plots/medals_Qle.html](results/plots/medals_Qle.html) for the full leaderboard with per-setting rankings.
 
 ## How do I add my own model?
 
