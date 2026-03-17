@@ -52,22 +52,25 @@ if __name__ == "__main__":
             # TODO[LATER]: this function will change depending on how we store the data, and the preprocessing we do before
             #       -> NB: before replacing, make sure to do all the data checks this function does
             # train, val, xtest = get_data_split(
-            train, test = get_data_split(
+            train, val, test = get_data_split(
                 df,
                 setting,
+                target=target,
                 remove_missing_features=False,
                 remove_missing_target=True,
-                target=target,
             )
             xtrain, ytrain, envs_train = train
+            xval, yval, envs_val = val
             xtest = test[0]
 
             # Get model and train
             model = get_model(model_name)
-            if model_name in ['lr', 'xgb']:
+            if model_name == 'lr':
                 model.fit(xtrain, ytrain)
+            elif model_name == 'xgb':
+                model.fit(xtrain, ytrain, eval_set=[(xval, yval)], verbose=False)
             else:
-                model.fit(xtrain, ytrain, envs=envs_train.values)
+                model.fit(xtrain, ytrain, eval_set=[(xval, yval)], envs=envs_train.values)
 
             # Evaluate model
             ypred = model.predict(xtest)

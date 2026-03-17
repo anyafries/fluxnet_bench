@@ -61,15 +61,17 @@ def get_default_params(model_name):
             'objective': 'reg:squarederror',
             'n_estimators': 100,
             'max_depth': 5,
-            'learning_rate': 0.1
+            'learning_rate': 0.1,
+            'early_stopping_rounds': 10,
         }
     elif model_name == 'mlp':
         params = {
             'hidden_dims': [128, 64],
             'dropout': 0.1,
             'lr': 1e-3,
-            'n_epochs': 100,
-            'batch_size': 256
+            'n_epochs': 500,
+            'batch_size': 256,
+            'early_stopping_rounds': 10,
         }
     elif model_name == 'gdro':
         params = {

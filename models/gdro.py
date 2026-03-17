@@ -139,7 +139,7 @@ class GroupDRO:
         layers.append(nn.Linear(prev_dim, 1))
         return nn.Sequential(*layers)
 
-    def fit(self, X, y, envs):
+    def fit(self, X, y, envs, eval_set=None):
         """
         Train with Group DRO.
 

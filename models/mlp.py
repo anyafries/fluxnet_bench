@@ -2,6 +2,8 @@
 MLP model with sklearn-style fit/predict API.
 """
 
+import copy
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,22 +15,13 @@ class MLP:
     """MLP regressor with sklearn-style fit/predict API."""
 
     def __init__(self, hidden_dims=[128, 64], dropout=0.1, lr=1e-3,
-                 n_epochs=100, batch_size=256):
-        """
-        Initialize MLP model.
-
-        Args:
-            hidden_dims: List of hidden layer dimensions
-            dropout: Dropout rate
-            lr: Learning rate
-            n_epochs: Number of training epochs
-            batch_size: Batch size for training
-        """
+                 n_epochs=100, batch_size=256, early_stopping_rounds=10):
         self.hidden_dims = hidden_dims
         self.dropout = dropout
         self.lr = lr
         self.n_epochs = n_epochs
         self.batch_size = batch_size
+        self.early_stopping_rounds = early_stopping_rounds
         self.model = None
 
     def _build_model(self, input_dim):
@@ -45,18 +38,7 @@ class MLP:
         layers.append(nn.Linear(prev_dim, 1))
         return nn.Sequential(*layers)
 
-    def fit(self, X, y, envs=None):
-        """
-        Train the model.
-
-        Args:
-            X: Features array of shape (n_samples, n_features)
-            y: Target array of shape (n_samples,)
-            envs: Environment labels (ignored for standard MLP)
-
-        Returns:
-            self
-        """
+    def fit(self, X, y, eval_set=None, envs=None):
         self.model = self._build_model(X.shape[1])
 
         dataset = TensorDataset(
@@ -66,13 +48,38 @@ class MLP:
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
-        self.model.train()
-        for epoch in range(self.n_epochs):
+        use_val = eval_set is not None
+        if use_val:
+            X_val_t = torch.tensor(eval_set[0][0], dtype=torch.float32)
+            y_val_t = torch.tensor(eval_set[0][1], dtype=torch.float32).view(-1, 1)
+            best_val_loss = float('inf')
+            best_weights = None
+            rounds_without_improvement = 0
+
+        for _ in range(self.n_epochs):
+            self.model.train()
             for X_batch, y_batch in loader:
                 optimizer.zero_grad()
                 loss = F.mse_loss(self.model(X_batch), y_batch)
                 loss.backward()
                 optimizer.step()
+
+            if use_val:
+                self.model.eval()
+                with torch.no_grad():
+                    val_loss = F.mse_loss(self.model(X_val_t), y_val_t).item()
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    best_weights = copy.deepcopy(self.model.state_dict())
+                    rounds_without_improvement = 0
+                else:
+                    rounds_without_improvement += 1
+                    if rounds_without_improvement >= self.early_stopping_rounds:
+                        self.model.load_state_dict(best_weights)
+                        break
+
+        if use_val and best_weights is not None:
+            self.model.load_state_dict(best_weights)
 
         return self
 

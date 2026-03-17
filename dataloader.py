@@ -13,6 +13,20 @@ logger = setup_logging(__name__)
 # --------- Predefined spatial groups for "spatial" CV setting ----------
 # -----------------------------------------------------------------------
 
+# 25 most southern sites
+
+SOUTHERN_SITES = [
+    'AR-CCg', 'AR-TF1',
+    'AU-ASM', 'AU-Boy', 'AU-Cpr', 'AU-Cum', 'AU-DaS',
+    'AU-Dry', 'AU-GWW', 'AU-Lit', 'AU-Lon' ,'AU-Rgf', 
+    'AU-War', 'AU-Whr', 'AU-Wom',
+    'BR-Npw', # Brazil
+    'CL-SDF', # Chile
+    'IL-Yat', # Israel
+    'PE-QFR', # Peru
+    'US-xPU', 'US-ONA', 'US-SRS', 'US-KS3', 'US-SRM', 'US-SP1'
+]
+
 # Spatial split for 100 sites
 
 G1 = ['US-Tw1', 'US-Snf', 'CH-Cha', 'DE-Rns', 'US-xDL', 'US-Tw5', 'US-KLS', 'US-Rpf', 'CL-SDF', 'US-Tw3', 'AU-Dry', 'UK-AMo', 'US-SSH', 'US-Tw4', 'DK-Skj', 'US-Sne', 'US-Seg', 'US-xGR', 'RU-Fy2', 'AR-CCg', 'US-CGG', 'RU-Fyo', 'FR-Hes', 'FR-Bil', 'DE-Hai']
@@ -112,26 +126,16 @@ def get_data_split(
     # Determine min_samples based on setting
     # TODO[LATER]: should be handled by the cleaned data
     min_samples = 100
-    if setting == "time-split":
-        group = generate_fold_info(df, setting)[0]
-    elif setting == "spatial-easy":
-        group = generate_fold_info(df, setting)[0]
-    elif setting == "spatial-hard":
-        group = [ # 25 southern most sites
-            'AU-ASM', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-GWW', 'AU-Lit', 
-            'AU-Rgf', 'AU-War', 'BR-Npw', 'AU-Wom', 'AU-Whr', 'AR-TF1', 
-            'AU-Dry', 'CL-SDF', 'AU-Boy', 'AR-CCg', 'AU-Lon', 'PE-QFR', 
-            'FR-Mej', 'FR-Lam', 'US-ONA', 'US-KS3', 'US-SP1', 'IL-Yat' 
-        ]
-    else:
-        raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
 
     # Subset the correct data
     if setting in ["spatial-easy", "spatial-hard"]:
         df_out = df.copy()
     elif setting == "time-split":
-        # group is a list of sites with enough years
-        df_out = df.loc[df["site_id"].isin(group)].copy()
+        # only keep sites with >=7 years of data
+        # TODO: it should also be where each (site, year) has enough samples
+        site_years = df.groupby("site_id")["year"].nunique()
+        sites = site_years[site_years >= 7].index.values
+        df_out = df.loc[df["site_id"].isin(sites)].copy()
     else:
         raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
 
@@ -165,8 +169,9 @@ def get_data_split(
         df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
         # split years chronologically
         unique_years = np.sort(df_out["year"].unique())
-        train_years, test_years = unique_years[:3], unique_years[3:7]
+        train_years, val_years, test_years = unique_years[:3], unique_years[3], unique_years[4:7]
         train = df_out.loc[df_out["year"].isin(train_years)].copy()
+        val = df_out.loc[df_out["year"] == val_years].copy()
         test = df_out.loc[df_out["year"].isin(test_years)].copy()
     elif setting in ["spatial-easy", "spatial-hard"]:
         # split by group of sites
@@ -176,22 +181,35 @@ def get_data_split(
             logger.info(f"Keeping {len(valid_sites)}/{len(site_counts)} sites with >= {min_samples} samples")
             df_out = df_out.loc[df_out["site_id"].isin(valid_sites)].copy()
 
-        train = df_out.loc[~df_out["site_id"].isin(group)].copy()
-        test = df_out.loc[df_out["site_id"].isin(group)].copy()
+        # get held-out group
+        if setting == "spatial-easy":
+            test_group, val_group = G1, G2
+        elif setting == "spatial-hard":
+            test_group = SOUTHERN_SITES
+            # for val group, we can use the sites that are in G1-G4 but not in the test group
+            val_group = [site for group in [G1, G2, G3, G4] for site in group if site not in test_group][:25]
+            assert len(test_group) == len(val_group) == 25, f"Expected 25 sites in test and val groups, got {len(test_group)} and {len(val_group)}"
+
+        train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
+        val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
+        test = df_out.loc[df_out["site_id"].isin(test_group)].copy()
         if test.shape[0] == 0:
-            logger.warning(f"* SKIPPING {group}: no test data")
-            raise ValueError(f"No test data for group {group}")
+            logger.warning(f"* SKIPPING {test_group}: no test data")
+            raise ValueError(f"No test data for group {test_group}")
     del df_out
 
     #  for columns GPP, NEE, Qle, make the values np.nan where mask==0
     for col in ["GPP", "NEE", "Qle"]:
         train.loc[train["mask"] == 0, col] = np.nan
+        val.loc[val["mask"] == 0, col] = np.nan
         if remove_missing_target:
             train = train.dropna(subset=[col])
+            val = val.dropna(subset=[col])
 
     # drop rows with any missing values (excluding target if remove_missing_target is False)
     if remove_missing_features:
         train = train.dropna(subset=[col for col in train.columns if col != target])
+        val = val.dropna(subset=[col for col in val.columns if col != target])
         test = test.dropna(subset=[col for col in test.columns if col != target])
 
     # clean up
@@ -200,6 +218,7 @@ def get_data_split(
     else:
         env_col = "site_id"
     envs_train = train[env_col]
+    envs_val = val[env_col].copy()
     envs_test = test[env_col].copy()
 
     # Extract metadata before dropping columns
@@ -209,9 +228,10 @@ def get_data_split(
     for col in ["site_id", "year", "month", "site_year", "mask"]:
         if col in train.columns:
             train = train.drop(columns=[col])
-        if col in test.columns:
+            val = val.drop(columns=[col])
             test = test.drop(columns=[col])
     train = train.astype(np.float64)
+    val = val.astype(np.float64)
     test = test.astype(np.float64) 
 
     xcols = ~train.columns.isin(['GPP', 'NEE', 'Qle'])
@@ -219,16 +239,20 @@ def get_data_split(
 
     # split into x,y
     xtrain, ytrain = train.values[:, xcols], train.values[:, ycol].ravel()
+    xval, yval = val.values[:, xcols], val.values[:, ycol].ravel()
     xtest, ytest = test.values[:, xcols], test.values[:, ycol].ravel()
 
     if astorch:
         xtrain = torch.tensor(xtrain, dtype=torch.float32)
         ytrain = torch.tensor(ytrain, dtype=torch.float32).view(-1, 1)
+        xval = torch.tensor(xval, dtype=torch.float32)
+        yval = torch.tensor(yval, dtype=torch.float32).view(-1, 1)
         xtest = torch.tensor(xtest, dtype=torch.float32)
         ytest = torch.tensor(ytest, dtype=torch.float32).view(-1, 1)
 
     return (
         (xtrain, ytrain, envs_train), 
+        (xval, yval, envs_val),
         (xtest, ytest, envs_test, sites_test, times_test)
     )
 
