@@ -263,7 +263,7 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
         axes = [axes]
 
     for i, setting in enumerate(settings):
-        plot_quantile(results, target, metric, scale, setting, axes[i])
+        plot_cdf(results, target, metric, scale, setting, axes[i])
 
     fig.suptitle(f"{target} ({scale})")
     plt.tight_layout()
@@ -285,35 +285,64 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
 def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     # --- 1. Data Preparation ---
     # Filter by target
-    subset = df[df['target'] == target]
+    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
     
-    # Pivot: Index=Model, Cols=(Setting, Scale), Values=Metric
+    # Pivot: Index=(Setting, Scale), Cols=Model, Values=Metric
     settings = get_ordered_settings(subset['setting'].unique())
     scales = subset['scale'].unique()
-    cols = pd.MultiIndex.from_product([settings, scales], names=['', ''])
+    
     pivot_df = subset.pivot_table(
-        index='model', 
-        columns=['setting', 'scale'], 
+        index=['setting', 'scale'], 
+        columns='model', 
         values=metric, 
         aggfunc=aggfunc
-    ).reindex(columns=cols).reset_index()
-    pivot_df.columns = pd.MultiIndex.from_tuples(
-        [('', '')] + [c for c in pivot_df.columns[1:]]
     )
     
+    # Reindex to enforce correct order and use a MultiIndex for rows
+    idx = pd.MultiIndex.from_product([settings, scales], names=[None, None])
+    pivot_df = pivot_df.reindex(index=idx)
+    pivot_df.columns.name = None # Clear the 'model' column heading label
+
+    # --- Calculate Medals and points ---
+    # Rank models across each row (1 is lowest/best)
+    ranks = pivot_df.rank(axis=1, method='first')
+    gold = (ranks == 1).sum()
+    silver = (ranks == 2).sum()
+    bronze = (ranks == 3).sum()
+    
+    points = (gold * 3) + (silver * 2) + (bronze * 1)
+
+    # Sort columns by Points (descending), then Gold (descending)
+    sort_df = pd.DataFrame({'points': points, 'gold': gold})
+    sorted_cols = sort_df.sort_values(by=['points', 'gold'], ascending=[False, False]).index
+    pivot_df = pivot_df[sorted_cols] # Reorder the main dataframe
+    
+    # Create the summary rows and prepend them
+    summary_data = {
+        col: [f"{points[col]} pts", f"🥇{gold[col]}    🥈{silver[col]}    🥉{bronze[col]}"] 
+        for col in pivot_df.columns
+    }
+    summary_df = pd.DataFrame(
+        summary_data, 
+        index=pd.MultiIndex.from_tuples([('Summary', 'Points'), ('Summary', 'Medals')])
+    )
+    pivot_df = pd.concat([summary_df, pivot_df])
+    
     # --- 2. Color Logic Calculation ---
-    def highlight_medals(column):
-        if column.name == ('', ''):
-            return [''] * len(column)
-        styles = [''] * len(column)
-        valid_vals = column.dropna().sort_values(ascending=True)
+    def highlight_medals(row):
+        if row.name[0] == 'Summary':
+            return ['font-weight: bold; background-color: #f8f9fa'] * len(row)
+        
+        styles = [''] * len(row)
+        # Drop NaNs and sort to find the top 3 models per row
+        valid_vals = row.dropna().sort_values(ascending=True)
         colors = {
             0: 'background-color: #FFD700', # Gold
             1: 'background-color: #C0C0C0', # Silver
             2: 'background-color: #CD7F32'  # Bronze
         }
         for rank in range(min(3, len(valid_vals))):
-            loc = column.index.get_loc(valid_vals.index[rank])
+            loc = row.index.get_loc(valid_vals.index[rank])
             styles[loc] = colors[rank]
         return styles
 
@@ -330,44 +359,67 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
         'selector': 'td',
         'props': [('border', '0.5px solid gray')]
     }
+    # Styling for the Setting row index
     heading1 = {
-        'selector': 'th.col_heading.level0', 
-        'props': [('font-weight', 'bold'), ('border-right', '1px solid black'),
-                  ('border-top', '1px solid black'), ('border-top', '1px solid black')]
+        'selector': 'th.row_heading.level0', 
+        'props': [('font-weight', 'bold'), ('border-bottom', '1px solid black'),
+                  ('text-align', 'center'), ('border-left', '1px solid black'), 
+                  ('border-top', '1px solid black')]
     }
+    # Styling for the Scale row index
     heading2 = {
-        'selector': 'th.col_heading.level1', 
-        'props': [('font-weight', 'normal')]
+        'selector': 'th.row_heading.level1', 
+        'props': [('font-weight', 'normal'), ('text-align', 'right'),
+                  ('border-right', '1px solid black')]
     }
+    # Styling for the Model column headers
+    heading_cols = {
+        'selector': 'th.col_heading',
+        'props': [('font-weight', 'bold'), ('border-top', '1px solid black'), 
+                  ('border-bottom', '1px solid black')]
+    }
+
     styler = (
         pivot_df.style
         .format(precision=2, na_rep="-")
-        .hide(axis="index")
-        .set_table_styles([table, cells, body_cells, heading1, heading2])
-        .apply(highlight_medals, axis=0)
+        .set_table_styles([table, cells, body_cells, heading1, heading2, heading_cols])
+        .apply(highlight_medals, axis=1) # Changed to axis=1 to evaluate medals across rows
     )
 
-    # Add solid lines between setting groups
-    group_size = len(scales)
-    border_indices = [(i * group_size) for i in range(0, len(settings) + 1)] 
-    for col in [pivot_df.columns[i] for i in border_indices]:
-        styler = styler.set_table_styles({
-            col: [
-                {"selector": "th", "props": "border-right: 1px solid black"},
-                {"selector": "td", "props": "border-right: 1px solid black"},
-            ]
-        }, overwrite=False, axis=0)
+    # Add solid lines between setting groups (horizontal borders)
+    for i in range(len(pivot_df) - 1):
+        if pivot_df.index[i][0] != pivot_df.index[i+1][0]:
+            # thickness = "2px" if pivot_df.index[i][0] == "Summary" else "1px"
+            thickness = "1px"
+            styler.set_table_styles({
+                pivot_df.index[i]: [
+                    {"selector": "th", "props": f"border-bottom: {thickness} solid black"},
+                    {"selector": "td", "props": f"border-bottom: {thickness} solid black"},
+                ]
+            }, overwrite=False, axis=1)
+
+    # Add left and right outer borders to the data columns
     styler.set_table_styles({
         pivot_df.columns[0]: [
-            {"selector": "th", "props": "border-left: 1px solid black"},
-            {"selector": "td", "props": "border-left: 1px solid black"}
-            ]
+            {"selector": "th, td", "props": "border-left: 1px solid black"}
+        ],
+        pivot_df.columns[-1]: [
+            {"selector": "th, td", "props": "border-right: 1px solid black"}
+        ]
     }, overwrite=False, axis=0)
+
+    # Add top and bottom outer borders to the dataframe
     styler.set_table_styles({
-        0: [{"selector": "td", "props": "border-top: 1px solid black"}],
-        len(pivot_df)-1: [{"selector": "td", "props": "border-bottom: 1px solid black"}]
+        pivot_df.index[0]: [
+            {"selector": "th, td", "props": "border-top: 1px solid black"}
+        ],
+        pivot_df.index[-1]: [
+            {"selector": "th, td", "props": "border-bottom: 1px solid black"}
+        ]
     }, overwrite=False, axis=1)
 
     # Save to HTML file
-    styler.to_html(filename)
-    print(f"Styled HTML table saved to {filename}")
+    html_output = '<meta charset="UTF-8">\n' + styler.to_html()
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(html_output)
+    print(f"Transposed styled HTML table saved to {filename}")
