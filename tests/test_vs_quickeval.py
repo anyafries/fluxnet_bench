@@ -175,8 +175,8 @@ def main():
                         default='daily', help="Data aggregation level")
     parser.add_argument("--tolerance", type=float, default=0.01,
                         help="Relative tolerance for comparison (default: 1%%)")
-    parser.add_argument("--override", action='store_true',
-                        help="Override existing results of our implementation")
+    parser.add_argument("--rerun", action='store_true',
+                        help="Rerun existing results of our implementation")
 
     args = parser.parse_args()
 
@@ -203,7 +203,7 @@ def main():
         f"--setting spatial-easy "
         f"--model_name lr "
         f"--experiment_name {exp_name} "
-        f"{"--override" if args.override else ""}"
+        f"{"--rerun" if args.rerun else ""}"
     )
 
     success = run_command(cmd, "Our Implementation", cwd=str(root_dir))

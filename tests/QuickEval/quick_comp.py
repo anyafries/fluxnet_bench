@@ -27,7 +27,7 @@ parser.add_argument('--subset100', action='store_true', help='Use only 100 sites
 parser.add_argument('--eval-on-train', action='store_true', help='Evaluate on training data')
 parser.add_argument('--our-setting', action='store_true', help='Use our setting (mask=True, min 100 samples)')
 parser.add_argument('--metric', type=str, default='MSE', choices=['MSE', 'NSE'], help='Metric to plot')
-parser.add_argument('--override', action='store_true', help='Override existing results')
+parser.add_argument('--rerun', action='store_true', help='Rerun existing results')
 args = parser.parse_args()
 
 target = args.target
@@ -51,8 +51,8 @@ eval_str = "_train" if EVAL_ON_TRAIN else ""
 results_file = os.path.join(
     results_dir, f'quickeval_daily{subset_str}_{target}_lr{eval_str}.csv')
 
-if os.path.exists(results_file) and (not args.override):
-    print(f"Results already exist at {results_file}. Use --override to overwrite.")
+if os.path.exists(results_file) and (not args.rerun):
+    print(f"Results already exist at {results_file}. Use --rerun to rerun.")
     sys.exit(0)
 
 # Custom warning handler to see the full stack trace

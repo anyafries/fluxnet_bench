@@ -17,14 +17,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, default='data/',
                         help="Path to the data directory")
-    parser.add_argument("--override", action='store_true',
-                        help="Override existing results")
+    parser.add_argument("--rerun", action='store_true',
+                        help="Rerun existing results")
     parser.add_argument("--setting", type=str,
                         choices=['time-split', 'spatial-easy', 'spatial-hard', 'all'],
                         default='all', help="Experiment setting")
     parser.add_argument("--target", type=str, choices=['GPP', 'NEE', 'Qle', 'all'],
                         default='all', help="Target variable to predict")
-    parser.add_argument("--model_name", type=str, choices=['xgb', 'lr', 'mlp', 'gdro'],
+    parser.add_argument("--model_name", type=str, choices=['xgb', 'lr', 'mlp', 'gdro', 'coral'],
                         default='lr', help="Model to use for the experiment")
 
     args = parser.parse_args()
@@ -42,11 +42,12 @@ if __name__ == "__main__":
     # Run experiments
     for setting in settings:
         for target in targets:
+            logger.info(f"Running experiment: setting={setting}, target={target}, model={model_name}")
             exp_name = get_exp_name(setting, target, model_name)
             metrics_path = get_metrics_path(setting, target, model_name)
 
-            if os.path.exists(metrics_path) and (not args.override):
-                logger.info(f"Results for {exp_name} already exist. Use --override to overwrite.")
+            if os.path.exists(metrics_path) and (not args.rerun):
+                logger.info(f"Results for {exp_name} already exist. Use --rerun to rerun.")
                 continue
 
             # TODO[LATER]: this function will change depending on how we store the data, and the preprocessing we do before
