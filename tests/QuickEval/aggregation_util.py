@@ -2,7 +2,7 @@ import xarray as xr   # for the MSC function to work properly, not all pacakge v
 import numpy as np
 import datetime
 from pandas.tseries.frequencies import to_offset
-import model_metrics
+import QuickEval.model_metrics
 
 def time_resample_mean(data_in, freq, loffset, label=None, skipna=False):
     # Handle deprecated frequency strings
@@ -145,7 +145,7 @@ def get_MSC_xarray(data_in1, mask=None, return_long=True, min_contribution=2, me
             mask = stack_timeagg(mask, subtimecoords)
             if tempres == 'd':
                 m1 = mask.sel(timeagg = slice(1,365))
-                m2 = mask.sel(timeagg = slice(366,367))
+                m2 = mask.sel(timeagg = slice(366,367)) # drop day of leap year
             elif tempres == 'w':
                 m1 = mask.sel(timeagg = slice(0,51))
                 m2 = mask.sel(timeagg = slice(52,53))
