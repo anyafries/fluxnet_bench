@@ -311,11 +311,6 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     bronze = (ranks == 3).sum()
     
     points = (gold * 3) + (silver * 2) + (bronze * 1)
-
-    # Sort columns by Points (descending), then Gold (descending)
-    sort_df = pd.DataFrame({'points': points, 'gold': gold})
-    sorted_cols = sort_df.sort_values(by=['points', 'gold'], ascending=[False, False]).index
-    pivot_df = pivot_df[sorted_cols] # Reorder the main dataframe
     
     # Create the summary rows and prepend them
     summary_data = {
