@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm import tqdm
 
 
 class MLP:
@@ -56,7 +57,8 @@ class MLP:
             best_weights = None
             rounds_without_improvement = 0
 
-        for _ in range(self.n_epochs):
+        pbar = tqdm(range(self.n_epochs), desc="MLP", unit="epoch")
+        for _ in pbar:
             self.model.train()
             for X_batch, y_batch in loader:
                 optimizer.zero_grad()
@@ -68,6 +70,7 @@ class MLP:
                 self.model.eval()
                 with torch.no_grad():
                     val_loss = F.mse_loss(self.model(X_val_t), y_val_t).item()
+                pbar.set_postfix(val_loss=f"{val_loss:.4f}")
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     best_weights = copy.deepcopy(self.model.state_dict())

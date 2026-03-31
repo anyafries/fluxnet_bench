@@ -4,6 +4,7 @@ pandas
 scikit-learn==1.5.2
 seaborn
 torch
+tqdm
 xarray
 xgboost
 # brew install libomp
