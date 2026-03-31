@@ -26,64 +26,70 @@ logger = setup_logging(__name__)
 # =============================================================================
 
 def _apply_mask(df, mask):
-    """Apply boolean mask to y_true and y_pred columns."""
-    if mask is None:
-        return df
+    """Attach boolean mask without destroying the raw values."""
     df = df.copy()
-    df.loc[~mask, ['y_true', 'y_pred']] = np.nan
+    if mask is None:
+        df['valid'] = True
+    else:
+        df['valid'] = mask
     return df
 
 
-def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean'):
+def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean',
+                        early_masking=False):
     """
     Aggregate y_true/y_pred with validity threshold.
-
-    Args:
-        df: DataFrame with y_true, y_pred columns
-        groupby_cols: Columns to group by
-        min_contribution: If >= 1, minimum count of valid samples.
-                         If < 1, minimum fraction of valid samples.
-        method: 'mean' or 'median'
-
-    Returns:
-        Aggregated DataFrame with y_true, y_pred columns
     """
-    grouped = df.groupby(groupby_cols)
     agg_func = method if method in ['mean', 'median'] else 'mean'
-
+    
     if min_contribution < 1:
-        # Weighted threshold: fraction based on abs values
-        # frac = sum(|data| * valid) / sum(|data|)
-        result = grouped.agg(
-            y_true=(('y_true', agg_func)),
-            y_pred=(('y_pred', agg_func)),
-            _abs_sum_true=('y_true', lambda x: np.abs(x).sum()),
-            _abs_sum_pred=('y_pred', lambda x: np.abs(x).sum()),
-            _valid_abs_sum_true=('y_true', lambda x: np.abs(x.dropna()).sum()),
-            _valid_abs_sum_pred=('y_pred', lambda x: np.abs(x.dropna()).sum()),
+        if early_masking:
+            raise NotImplementedError("Early masking with weighted threshold is not implemented yet.")  
+        
+        # Prepare columns to compute the weighted threshold: frac = sum(|data| * valid) / sum(|data|)
+        df['_abs_true'] = np.abs(df['y_true'])
+        df['_abs_pred'] = np.abs(df['y_pred'])
+        df['_valid_abs_true'] = df['_abs_true'].where(df['valid'], 0)
+        df['_valid_abs_pred'] = df['_abs_pred'].where(df['valid'], 0)
+        
+        result = df.groupby(groupby_cols).agg(
+            y_true=('y_true', agg_func),
+            y_pred=('y_pred', agg_func),
+            _abs_sum_true=('_abs_true', 'sum'),
+            _abs_sum_pred=('_abs_pred', 'sum'),
+            _valid_abs_sum_true=('_valid_abs_true', 'sum'),
+            _valid_abs_sum_pred=('_valid_abs_pred', 'sum'),
         )
+        
         # Compute fraction of valid data (weighted by abs value)
         frac_true = result['_valid_abs_sum_true'] / result['_abs_sum_true'].replace(0, np.nan)
         frac_pred = result['_valid_abs_sum_pred'] / result['_abs_sum_pred'].replace(0, np.nan)
 
-        # Apply threshold
+        # Apply threshold filtering
         result.loc[frac_true < min_contribution, 'y_true'] = np.nan
         result.loc[frac_pred < min_contribution, 'y_pred'] = np.nan
-
-        result = result[['y_true', 'y_pred']]
+        
     else:
-        # Count-based threshold
-        result = grouped.agg(
-            y_true=('y_true', agg_func),
-            y_pred=('y_pred', agg_func),
-            _n_valid_true=('y_true', 'count'),
-            _n_valid_pred=('y_pred', 'count'),
-        )
-        result.loc[result['_n_valid_true'] < min_contribution, 'y_true'] = np.nan
-        result.loc[result['_n_valid_pred'] < min_contribution, 'y_pred'] = np.nan
-        result = result[['y_true', 'y_pred']]
+        if early_masking:
+            # Count-based threshold
+            df['_y_true_masked'] = df['y_true'].where(df['valid'])
+            df['_y_pred_masked'] = df['y_pred'].where(df['valid'])
+            true_col, pred_col = '_y_true_masked', '_y_pred_masked'
+        else:
+            true_col, pred_col = 'y_true', 'y_pred'
 
-    return result.reset_index()
+
+        result = df.groupby(groupby_cols).agg(
+            y_true=(true_col, agg_func),
+            y_pred=(pred_col, agg_func),
+            _n_valid=('valid', 'sum')
+        )
+        
+        # Apply threshold filtering
+        result.loc[result['_n_valid'] < min_contribution, ['y_true', 'y_pred']] = np.nan
+        
+    # Return just the target columns cleanly
+    return result[['y_true', 'y_pred']].reset_index()
 
 
 # =============================================================================
@@ -93,6 +99,7 @@ def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean'):
 def aggregate_daily(df, mask=None):
     """No aggregation - return as-is (already daily)."""
     df = _apply_mask(df, mask)
+    df = df[df['valid']].drop(columns=['valid']) 
     return df.copy()
 
 
@@ -103,7 +110,7 @@ def aggregate_weekly(df, mask=None, min_contribution=0.5):
     Args:
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
-        min_contribution: Minimum fraction (< 1) or count (>= 1) of valid days
+        min_contribution: Minimum fraction or count of valid days
 
     Returns:
         DataFrame with weekly aggregated values
@@ -125,7 +132,7 @@ def aggregate_monthly(df, mask=None, min_contribution=0.5):
     Args:
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
-        min_contribution: Minimum fraction (< 1) or count (>= 1) of valid days
+        min_contribution: Minimum fraction or count of valid days
 
     Returns:
         DataFrame with monthly aggregated values
@@ -147,7 +154,7 @@ def aggregate_yearly(df, mask=None, min_contribution=0.5):
     Args:
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
-        min_contribution: Minimum fraction (< 1) or count (>= 1) of valid days
+        min_contribution: Minimum fraction or count of valid days
 
     Returns:
         DataFrame with yearly aggregated values
@@ -160,14 +167,15 @@ def aggregate_yearly(df, mask=None, min_contribution=0.5):
     result = _agg_with_threshold(df, ['env', '_year'], min_contribution)
     # Set time to mid-year
     result['time'] = pd.to_datetime(result['_year'].astype(str) + '-07-01')
-    return result.drop(columns=['_year']).rename(columns={'_year': 'year'})
+    return result.drop(columns=['_year'])
 
 
 # =============================================================================
 # Mean Seasonal Cycle (MSC)
 # =============================================================================
 
-def compute_msc(df, mask=None, min_contribution=2, method='mean',
+def compute_msc(df, mask=None, min_contribution=2, 
+                min_contribution_hour_to_day=0.5, method='mean',
                 return_long=False, return_outlier_mask=False,
                 z_outlier=None, test_direction=0):
     """
@@ -178,7 +186,8 @@ def compute_msc(df, mask=None, min_contribution=2, method='mean',
     Args:
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean Series for valid data
-        min_contribution: Min years per DOY (>= 1) or fraction (< 1)
+        min_contribution: Min years per DOY or fraction
+        min_contribution_hour_to_day: TODO
         method: 'mean' or 'median'
         return_long: If True, expand MSC to original time series length
         return_outlier_mask: If True, also return outlier detection results
@@ -192,74 +201,26 @@ def compute_msc(df, mask=None, min_contribution=2, method='mean',
     """
     df = _apply_mask(df, mask)
     df = df.copy()
+    
     df['time'] = pd.to_datetime(df['time'])
     df['doy'] = df['time'].dt.dayofyear
     df['year'] = df['time'].dt.year
 
+    if return_outlier_mask:
+        raise DeprecationWarning("Outlier detection is not yet implemented in this function.")
+
+    # if there are not unique (doy, year) pairs, we need to aggregate to daily first
+    if df.groupby(['env', 'year', 'doy']).size().max() > 1:
+        # TODO 
+        # aggregate to daily first, then compute MSC on the daily-aggregated data
+        # use min_contribution_hour_to_day
+        raise NotImplementedError("Input data has multiple entries per (env, year, doy).")
+
     agg_func = method if method in ['mean', 'median'] else 'mean'
 
     # Compute MSC per (env, doy)
-    msc = _agg_with_threshold(df, ['env', 'doy'], min_contribution, method=agg_func)
-
-    # Handle outlier detection if requested
-    outlier_result = None
-    if return_outlier_mask:
-        if z_outlier is None:
-            z_outlier = 1.5 if method == 'median' else 3.0
-
-        # Compute spread per (env, doy)
-        grouped = df.groupby(['env', 'doy'])
-
-        if method == 'median':
-            # IQR-based: outliers are outside [Q1 - z*IQR, Q3 + z*IQR]
-            q25 = grouped[['y_true', 'y_pred']].quantile(0.25).reset_index()
-            q75 = grouped[['y_true', 'y_pred']].quantile(0.75).reset_index()
-            q25 = q25.rename(columns={'y_true': 'q25_true', 'y_pred': 'q25_pred'})
-            q75 = q75.rename(columns={'y_true': 'q75_true', 'y_pred': 'q75_pred'})
-
-            spread_df = q25.merge(q75, on=['env', 'doy'])
-            spread_df['iqr_true'] = spread_df['q75_true'] - spread_df['q25_true']
-            spread_df['iqr_pred'] = spread_df['q75_pred'] - spread_df['q25_pred']
-            spread_df['lower_true'] = spread_df['q25_true'] - z_outlier * spread_df['iqr_true']
-            spread_df['upper_true'] = spread_df['q75_true'] + z_outlier * spread_df['iqr_true']
-            spread_df['lower_pred'] = spread_df['q25_pred'] - z_outlier * spread_df['iqr_pred']
-            spread_df['upper_pred'] = spread_df['q75_pred'] + z_outlier * spread_df['iqr_pred']
-        else:
-            # Z-score based: outliers are outside [mean - z*std, mean + z*std]
-            std_df = grouped[['y_true', 'y_pred']].std().reset_index()
-            std_df = std_df.rename(columns={'y_true': 'std_true', 'y_pred': 'std_pred'})
-            spread_df = msc.merge(std_df, on=['env', 'doy'])
-            spread_df['lower_true'] = spread_df['y_true'] - z_outlier * spread_df['std_true']
-            spread_df['upper_true'] = spread_df['y_true'] + z_outlier * spread_df['std_true']
-            spread_df['lower_pred'] = spread_df['y_pred'] - z_outlier * spread_df['std_pred']
-            spread_df['upper_pred'] = spread_df['y_pred'] + z_outlier * spread_df['std_pred']
-
-        # Create expanded thresholds for original data
-        df_with_thresh = df.merge(
-            spread_df[['env', 'doy', 'lower_true', 'upper_true', 'lower_pred', 'upper_pred']],
-            on=['env', 'doy'],
-            how='left'
-        )
-
-        # Create outlier mask
-        if test_direction == 0:
-            valid_true = (df_with_thresh['y_true'] >= df_with_thresh['lower_true']) & \
-                        (df_with_thresh['y_true'] <= df_with_thresh['upper_true'])
-            valid_pred = (df_with_thresh['y_pred'] >= df_with_thresh['lower_pred']) & \
-                        (df_with_thresh['y_pred'] <= df_with_thresh['upper_pred'])
-        elif test_direction == -1:
-            valid_true = df_with_thresh['y_true'] >= df_with_thresh['lower_true']
-            valid_pred = df_with_thresh['y_pred'] >= df_with_thresh['lower_pred']
-        else:  # test_direction == 1
-            valid_true = df_with_thresh['y_true'] <= df_with_thresh['upper_true']
-            valid_pred = df_with_thresh['y_pred'] <= df_with_thresh['upper_pred']
-
-        outlier_mask = valid_true & valid_pred
-        outlier_result = (
-            outlier_mask,
-            df_with_thresh[['lower_true', 'lower_pred']],
-            df_with_thresh[['upper_true', 'upper_pred']]
-        )
+    msc = _agg_with_threshold(df, ['env', 'doy'], min_contribution, 
+                              method=agg_func, early_masking=True)
 
     if return_long:
         # Expand MSC to original time series length
@@ -270,96 +231,9 @@ def compute_msc(df, mask=None, min_contribution=2, method='mean',
         )
         msc_long = msc_long[['env', 'time', 'y_true', 'y_pred']]
 
-        if return_outlier_mask:
-            return msc_long, outlier_result[0], outlier_result[1], outlier_result[2]
         return msc_long
 
-    if return_outlier_mask:
-        return msc, outlier_result[0], outlier_result[1], outlier_result[2]
     return msc
-
-
-def compute_msc_moving_window(df, mask=None, nyears_window=5, min_contribution=2,
-                               method='mean', return_outlier_mask=False,
-                               z_outlier=None, test_direction=0):
-    """
-    Compute MSC with a moving window of years.
-
-    For each year, computes MSC using data from surrounding years within the window.
-
-    Args:
-        df: DataFrame with y_true, y_pred, env, time columns
-        mask: Optional boolean mask for valid data
-        nyears_window: Number of years in the window
-        min_contribution: Min years per DOY for MSC
-        method: 'mean' or 'median'
-        return_outlier_mask: If True, also return outlier mask
-        z_outlier: Threshold for outlier detection
-        test_direction: Direction for outlier testing
-
-    Returns:
-        DataFrame with MSC values expanded to original timestamps
-    """
-    if nyears_window == 0:
-        return compute_msc(df, mask=mask, min_contribution=min_contribution,
-                          method=method, return_long=True,
-                          return_outlier_mask=return_outlier_mask,
-                          z_outlier=z_outlier, test_direction=test_direction)
-
-    df = _apply_mask(df, mask)
-    df = df.copy()
-    df['time'] = pd.to_datetime(df['time'])
-    df['year'] = df['time'].dt.year
-
-    years = sorted(df['year'].unique())
-    half_window = nyears_window // 2
-
-    results = []
-    outlier_masks = []
-
-    for year in years:
-        # Determine window bounds
-        if year - half_window < min(years):
-            year_start = min(years)
-            year_end = min(years) + nyears_window
-        elif year + half_window + 1 > max(years):
-            year_start = max(years) - nyears_window
-            year_end = max(years)
-        else:
-            year_start = year - half_window
-            year_end = year + half_window + 1
-
-        # Select data within window
-        window_mask = (df['year'] >= year_start) & (df['year'] <= year_end)
-        window_df = df[window_mask]
-
-        # Compute MSC for this window
-        if return_outlier_mask:
-            msc, out_mask, _, _ = compute_msc(
-                window_df, mask=None, min_contribution=min_contribution,
-                method=method, return_long=True, return_outlier_mask=True,
-                z_outlier=z_outlier, test_direction=test_direction
-            )
-            # Keep only current year's data
-            year_mask = pd.to_datetime(msc['time']).dt.year == year
-            results.append(msc[year_mask])
-            outlier_masks.append(out_mask[year_mask])
-        else:
-            msc = compute_msc(
-                window_df, mask=None, min_contribution=min_contribution,
-                method=method, return_long=True
-            )
-            # Keep only current year's data
-            year_mask = pd.to_datetime(msc['time']).dt.year == year
-            results.append(msc[year_mask])
-
-    result_df = pd.concat(results, ignore_index=True)
-
-    if return_outlier_mask:
-        outlier_mask = pd.concat(outlier_masks, ignore_index=True)
-        return result_df, outlier_mask
-
-    return result_df
 
 
 # =============================================================================
@@ -445,33 +319,6 @@ def aggregate_iav(df, mask=None, min_contribution=0.5):
     return yearly
 
 
-def aggregate_spatial(df, mask=None, min_contribution=0.5):
-    """
-    Compute site means for spatial variability.
-
-    First aggregates to yearly, then computes multi-year mean per site.
-    This matches QuickEval's site_mean function.
-
-    Args:
-        df: DataFrame with y_true, y_pred, env, time columns
-        mask: Optional boolean mask for valid data
-        min_contribution: Minimum fraction/count of valid days per year
-
-    Returns:
-        DataFrame with one row per site (env)
-    """
-    # First aggregate to yearly
-    yearly = aggregate_yearly(df, mask=mask, min_contribution=min_contribution)
-
-    # Compute multi-year mean per site
-    site_means = yearly.groupby('env').agg({
-        'y_true': 'mean',
-        'y_pred': 'mean'
-    }).reset_index()
-
-    return site_means
-
-
 # =============================================================================
 # Registry
 # =============================================================================
@@ -482,6 +329,5 @@ AGGREGATIONS = {
     'monthly': aggregate_monthly,
     'seasonal': aggregate_seasonal,
     'anom': aggregate_anomaly,
-    'iav': aggregate_iav,
-    'spatial': aggregate_spatial,
+    'iav': aggregate_iav
 }
