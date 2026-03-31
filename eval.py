@@ -17,10 +17,10 @@ from utils.utils import setup_logging, find_available_experiments
 
 logger = setup_logging(__name__)
 
-def get_metrics(setting, target, model_name, override=False):
+def get_metrics(setting, target, model_name, rerun=False):
     """Get metrics for an experiment, computing if necessary."""
     # Try loading existing metrics
-    if not override:
+    if not rerun:
         metrics_df = load_metrics(setting, target, model_name)
         if metrics_df is not None:
             return metrics_df
@@ -34,7 +34,7 @@ def get_metrics(setting, target, model_name, override=False):
     return metrics_df
 
 
-def load_all_metrics(settings=None, targets=None, models=None, scales=None, override=False):
+def load_all_metrics(settings=None, targets=None, models=None, scales=None, rerun=False):
     """
     Load or compute metrics for all specified experiments.
 
@@ -43,7 +43,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None, over
         targets: List of targets to include (default: all found)
         models: List of models to include (default: all found)
         scales: List of scales to include (default: all scales in data)
-        override: If True, recompute all metrics from predictions
+        rerun: If True, recompute all metrics from predictions
 
     Returns:
         pd.DataFrame with all metrics combined
@@ -65,7 +65,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None, over
 
     all_results = []
     for setting, target, model_name in available:
-        metrics_df = get_metrics(setting, target, model_name, override=override)
+        metrics_df = get_metrics(setting, target, model_name, rerun=rerun)
         if metrics_df is not None:
             if scales and 'scale' in metrics_df.columns:
                 metrics_df = metrics_df[metrics_df['scale'].isin(scales)]
@@ -91,7 +91,7 @@ if __name__ == "__main__":
                         help="Filter by model (e.g., 'lr')")
     parser.add_argument("--scale", type=str, default=None,
                         help="Filter by scale (e.g., 'daily', 'weekly', 'monthly')")
-    parser.add_argument("--override", action='store_true',
+    parser.add_argument("--rerun", action='store_true',
                         help="Recompute metrics from predictions")
 
     args = parser.parse_args()
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         targets=targets,
         models=models,
         scales=scales,
-        override=args.override,
+        rerun=args.rerun,
     )
 
     print(results.head())
