@@ -179,20 +179,6 @@ def compute_diagnostics(df, scale='daily', metrics=None):
     else:
         raise ValueError(f"Unknown scale: {scale}. Available: {list(AGGREGATIONS.keys())}")
 
-    # For spatial scale, metrics are computed across sites (one value total)
-    # TODO: fix, this is just wrong??
-    #       * n_samples is 2 instead of 25 sites, why?
-    #       * should we compute metrics across all sites, or per site?
-    #       * env is NaN for spatial scale, why? -> what should it be?
-    if scale == 'spatial':
-        result = compute_metrics_for_group(
-            agg_df['y_true'].values,
-            agg_df['y_pred'].values,
-            metrics
-        )
-        result['n_samples'] = len(agg_df)
-        return pd.DataFrame([result])
-
     # For other scales, compute metrics per group
     results = []
     for group_val in agg_df['env'].unique():
@@ -211,38 +197,9 @@ def compute_diagnostics(df, scale='daily', metrics=None):
     return pd.DataFrame(results)
 
 
-def compute_all_diagnostics(df, scales=None, metrics=None):
-    """
-    Compute metrics at multiple temporal scales.
-
-    Args:
-        df: DataFrame with y_true, y_pred, env, time columns
-        scales: List of scales to compute (default: all available)
-        metrics: Dict of {name: function} for metrics
-
-    Returns:
-        dict: {scale: DataFrame of metrics}
-    """
-    if scales is None:
-        scales = list(AGGREGATIONS.keys())
-
-    results = {}
-    for scale in scales:
-        try:
-            results[scale] = compute_diagnostics(df, scale, metrics)
-        except Exception as e:
-            logger.warning(f"Could not compute {scale} diagnostics: {e}")
-
-    return results
-
-
 def compute_metrics(predictions_df, model_name, setting, target, scales=None):
     """
     Compute metrics at all temporal scales for an experiment.
-
-    This combines compute_diagnostics across all scales and adds metadata.
-    Used by train_model.py to compute metrics after training, and results
-    are saved to results/metrics/{exp_name}.csv.
 
     Args:
         predictions_df: DataFrame with y_true, y_pred, env, time columns
@@ -254,6 +211,10 @@ def compute_metrics(predictions_df, model_name, setting, target, scales=None):
     Returns:
         pd.DataFrame with metrics for all scales combined
     """
+    if predictions_df is None:
+        logger.warning("No predictions DataFrame provided, cannot compute metrics.")
+        return None
+    
     if scales is None:
         scales = list(AGGREGATIONS.keys())
 
@@ -281,53 +242,3 @@ def compute_metrics(predictions_df, model_name, setting, target, scales=None):
     combined = combined[[c for c in leading_cols if c in combined.columns] + other_cols]
 
     return combined
-
-
-# -----------------------------------------------------------------------
-# ----------------------- Simple Evaluation Function --------------------
-# -----------------------------------------------------------------------
-
-def evaluate_fold(ytrue, ypred, envs, verbose=True, digits=3):
-    """
-    Evaluate predictions for multiple environments.
-
-    This is a simplified interface that computes daily metrics per environment.
-    For full multi-scale evaluation, use compute_all_diagnostics.
-
-    Args:
-        ytrue (array-like): True values
-        ypred (array-like): Predicted values
-        envs (array-like): Environment labels
-        verbose (bool): If True, log the results
-        digits (int): Number of decimal places for logging
-
-    Returns:
-        pd.DataFrame: DataFrame with one row per env and metric columns
-    """
-    ytrue = np.asarray(ytrue)
-    ypred = np.asarray(ypred)
-    envs = np.asarray(envs)
-
-    results = []
-    for env in np.unique(envs):
-        mask = envs == env
-        env_metrics = compute_metrics_for_group(ytrue[mask], ypred[mask])
-        env_metrics['env'] = env
-        env_metrics['n_samples'] = mask.sum()
-        results.append(env_metrics)
-
-    results_df = pd.DataFrame(results)
-
-    if verbose:
-        # Log summary statistics across all environments
-        for metric in DEFAULT_METRICS.keys():
-            values = results_df[metric].dropna()
-            if len(values) > 0:
-                logger.info(
-                    f"  {metric.upper()}: "
-                    f"median={values.median():.{digits}f}, "
-                    f"mean={values.mean():.{digits}f}, "
-                    f"std={values.std():.{digits}f}"
-                )
-
-    return results_df
