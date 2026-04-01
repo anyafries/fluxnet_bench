@@ -5,11 +5,13 @@ This module contains functions to evaluate model predictions using
 various metrics. For temporal aggregation, see aggregation.py.
 """
 
+import json
 import numpy as np
 import pandas as pd
+import os
 
 from utils.aggregation import AGGREGATIONS
-from utils.utils import setup_logging, get_metrics_path, save_csv, load_csv
+from utils.utils import setup_logging, get_metrics_path, get_params_path, save_csv, load_csv
 
 logger = setup_logging(__name__)
 
@@ -48,11 +50,6 @@ def relative_bias(ytrue, ypred):
     return np.nanmean(ytrue[mask] - ypred[mask]) / np.nanmean(ytrue[mask])
 
 
-def relative_error(ytrue, ypred):
-    """Mean Relative Absolute Deviation (MrAD in QuickEval)."""
-    return np.nanmean(np.abs((ypred - ytrue) / ytrue))
-
-
 def nse(ytrue, ypred):
     """
     Nash-Sutcliffe Efficiency (NSE / MEF in QuickEval).
@@ -79,19 +76,13 @@ def r2_score(ytrue, ypred):
     mask = np.isfinite(ytrue) & np.isfinite(ypred)
     if mask.sum() < 2:
         return np.nan
+    if (np.std(ytrue[mask]) == 0) or (np.std(ypred[mask]) == 0):
+        return np.nan
     corr = np.corrcoef(ytrue[mask], ypred[mask])[0, 1]
     return corr ** 2
 
 
-def pearson_corr(ytrue, ypred):
-    """Pearson correlation coefficient."""
-    mask = np.isfinite(ytrue) & np.isfinite(ypred)
-    if mask.sum() < 2:
-        return np.nan
-    return np.corrcoef(ytrue[mask], ypred[mask])[0, 1]
-
-
-# Default metrics to compute (maps name -> function)
+# Default metrics to compute
 DEFAULT_METRICS = {
     'mse': mse,
     'rmse': rmse,
@@ -99,7 +90,6 @@ DEFAULT_METRICS = {
     'nse': nse,
     'r2_score': r2_score,
     'bias': bias,
-    'relative_error': relative_error,
 }
 
 # -----------------------------------------------------------------------
@@ -118,6 +108,18 @@ def load_metrics(setting, target, model_name):
     """Load metrics file for a given experiment."""
     metrics_path = get_metrics_path(setting, target, model_name)
     return load_csv(metrics_path)
+
+
+def save_best_params(best_params, setting, target, model_name):
+    """Save the best hyperparameter dictionary to a JSON file."""
+    path = get_params_path(setting, target, model_name)
+    # Ensure the directory exists (in case it's the first file being saved)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    
+    with open(path, 'w') as f:
+        json.dump(best_params, f, indent=4)
+    logger.info(f"Saved best parameters to {path}")
+
 
 # -----------------------------------------------------------------------
 # ----------------------- Metric Computation ----------------------------
@@ -227,7 +229,12 @@ def compute_metrics(predictions_df, model_name, setting, target, scales=None):
             results_df['target'] = target
             results_df['scale'] = scale
             all_results.append(results_df)
-            logger.info(f"Computed {scale} metrics: {len(results_df)} groups")
+            n_samples = results_df['n_samples']
+            min_s, mean_s, max_s = n_samples.min(), n_samples.mean(), n_samples.max()
+            summary_log = f"Computed {scale} metrics: {len(results_df)} groups"
+            logger.info(summary_log+\
+                        f"{"\t" if len(summary_log) < 33 else ""}" +\
+                        f"\t(min samples: {min_s}, mean: {mean_s:.1f}, max: {max_s})")
         except Exception as e:
             logger.warning(f"Could not compute {scale} metrics: {e}")
 

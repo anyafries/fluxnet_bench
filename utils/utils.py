@@ -47,6 +47,12 @@ def get_metrics_path(setting, target, model_name):
     return os.path.join(RESULTS_DIR, 'metrics', f"{exp_name}.csv")
 
 
+def get_params_path(setting, target, model_name):
+    """Get path for best parameters file."""
+    exp_name = get_exp_name(setting, target, model_name)
+    return os.path.join(RESULTS_DIR, 'models', f"{exp_name}_best_params.json")
+
+
 # ----------- Generic I/O functions -----------
 
 def save_csv(df, path):
@@ -63,7 +69,6 @@ def load_csv(path):
     df = pd.read_csv(path)
     logger.info(f"Loaded: {path} ({len(df)} rows)")
     return df
-
 
 # ----------- Experiment discovery -----------
 
