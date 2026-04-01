@@ -222,16 +222,16 @@ def compute_msc(df, mask=None, min_contribution=2,
     msc = _agg_with_threshold(df, ['env', 'doy'], min_contribution, 
                               method=agg_func, early_masking=True)
 
-    if return_long:
-        # Expand MSC to original time series length
-        msc_long = df[['env', 'time', 'doy']].merge(
-            msc[['env', 'doy', 'y_true', 'y_pred']],
-            on=['env', 'doy'],
-            how='left'
-        )
-        msc_long = msc_long[['env', 'time', 'y_true', 'y_pred']]
+    # if return_long:
+    #     # Expand MSC to original time series length
+    #     msc_long = df[['env', 'time', 'doy']].merge(
+    #         msc[['env', 'doy', 'y_true', 'y_pred']],
+    #         on=['env', 'doy'],
+    #         how='left'
+    #     )
+    #     msc_long = msc_long[['env', 'time', 'y_true', 'y_pred']]
 
-        return msc_long
+    #     return msc_long
 
     return msc
 
@@ -259,7 +259,9 @@ def aggregate_seasonal(df, mask=None, min_contribution=2, method='mean'):
                        method=method, return_long=False)
 
 
-def aggregate_anomaly(df, mask=None, min_contribution=2, method='mean'):
+def aggregate_anomaly(df, mask=None, min_contribution=2, 
+                      min_contribution_hour_to_day=0.5,
+                      method='mean'):
     """
     Compute anomalies from mean seasonal cycle.
 
@@ -269,6 +271,7 @@ def aggregate_anomaly(df, mask=None, min_contribution=2, method='mean'):
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum years for MSC computation
+        min_contribution_hour_to_day: TODO
         method: 'mean' or 'median' for MSC
 
     Returns:
@@ -276,16 +279,29 @@ def aggregate_anomaly(df, mask=None, min_contribution=2, method='mean'):
     """
     df = _apply_mask(df, mask)
     df = df.copy()
+
+    # if there are not unique (doy, year) pairs, we need to aggregate to daily first
+    df['time'] = pd.to_datetime(df['time'])
+    df['doy'] = df['time'].dt.dayofyear
+    df['year'] = df['time'].dt.year
+
+    if df.groupby(['env', 'year', 'doy']).size().max() > 1:
+        # TODO 
+        # aggregate to daily first, then compute MSC on the daily-aggregated data
+        # use min_contribution_hour_to_day
+        raise NotImplementedError("Input data has multiple entries per (env, year, doy).")
+
     df['time'] = pd.to_datetime(df['time'])
     df['doy'] = df['time'].dt.dayofyear
 
-    # Compute MSC (short form)
+    # Compute MSC
     msc = compute_msc(df, mask=None, min_contribution=min_contribution,
                       method=method, return_long=False)
     msc = msc.rename(columns={'y_true': 'msc_true', 'y_pred': 'msc_pred'})
 
     # Merge and compute anomalies
-    result = df.merge(msc[['env', 'doy', 'msc_true', 'msc_pred']], on=['env', 'doy'], how='left')
+    result = df.merge(msc[['env', 'doy', 'msc_true', 'msc_pred']], 
+                      on=['env', 'doy'], how='left')
     result['y_true'] = result['y_true'] - result['msc_true']
     result['y_pred'] = result['y_pred'] - result['msc_pred']
 
