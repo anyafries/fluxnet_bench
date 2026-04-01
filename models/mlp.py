@@ -4,7 +4,6 @@ MLP model with sklearn-style fit/predict API.
 
 import copy
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .torch_utils import FluxnetDataset, StratifiedBatchSampler
+from .torch_utils import FluxnetDataset, ProportionateBatchSampler
 
 
 class GroupDRO:
@@ -89,7 +89,7 @@ class GroupDRO:
 
         # Create dataset and stratified sampler
         dataset = FluxnetDataset(X, y, env_indices)
-        sampler = StratifiedBatchSampler(env_indices, self.batch_size)
+        sampler = ProportionateBatchSampler(env_indices, self.batch_size)
         loader = DataLoader(dataset, batch_sampler=sampler)
 
         # Initialize optimizer and group weights

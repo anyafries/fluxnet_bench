@@ -21,7 +21,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from .torch_utils import FluxnetDataset, StratifiedBatchSampler
+from .torch_utils import FluxnetDataset, ProportionateBatchSampler
 
 
 class _AbstractDomainAlignment(ABC):
@@ -83,7 +83,7 @@ class _AbstractDomainAlignment(ABC):
         env_to_idx = {e: i for i, e in enumerate(unique_envs)}
         env_indices = np.array([env_to_idx[e] for e in envs])
         dataset = FluxnetDataset(X, y, env_indices)
-        sampler = StratifiedBatchSampler(env_indices, self.batch_size)
+        sampler = ProportionateBatchSampler(env_indices, self.batch_size)
         loader = DataLoader(dataset, batch_sampler=sampler)
 
         params = list(self.feature_extractor.parameters()) + list(self.head.parameters())
