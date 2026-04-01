@@ -1,15 +1,18 @@
 """
-Deep CORAL model with sklearn-style fit/predict API.
+Deep CORAL and MMD models with sklearn-style fit/predict API.
 
-Implements Deep CORAL (Correlation Alignment) for domain generalization from:
-Sun & Saenko, "Deep CORAL: Correlation Alignment for Deep Domain Adaptation" (ECCV 2016)
+CORAL implements Deep CORAL (Correlation Alignment) for domain generalization from:
+  Sun & Saenko, "Deep CORAL: Correlation Alignment for Deep Domain Adaptation" (ECCV 2016)
 
-In the domain generalization setting, the CORAL penalty is applied pairwise across
-all training environments (rather than source→target), encouraging the network to
-learn domain-invariant representations.
+MMD implements Maximum Mean Discrepancy domain generalization.
+  Adapted from https://github.com/mlfoundations/tableshift
+
+In the domain generalization setting, penalties are applied pairwise (or vs. global)
+across all training environments, encouraging domain-invariant representations.
 """
 
 import copy
+from abc import ABC, abstractmethod
 
 import numpy as np
 import torch
@@ -21,42 +24,26 @@ from tqdm import tqdm
 from .torch_utils import FluxnetDataset, StratifiedBatchSampler
 
 
-
-
-class CORAL:
+class _AbstractDomainAlignment(ABC):
     """
-    Deep CORAL regressor with sklearn-style fit/predict API.
+    Base class for domain-alignment regularizers (CORAL, MMD).
 
-    Minimizes MSE plus a CORAL penalty that aligns feature distribution
-    means and covariances across training environments.
+    Subclasses implement `_compute_penalty(feats, env_batch, subset_envs)`
+    which returns `(penalty_tensor, lambda_weight)`.
     """
 
     def __init__(self, hidden_dims=[128, 64], dropout=0.1, lr=1e-3,
-                 n_epochs=500, batch_size=256, early_stopping_rounds=10,
-                 coral_lambda=1.0, num_coral_pairs=10):
-        """
-        Args:
-            hidden_dims: List of hidden layer dimensions
-            dropout: Dropout rate
-            lr: Learning rate
-            n_epochs: Maximum number of training epochs
-            batch_size: Batch size for training
-            early_stopping_rounds: Stop if val loss doesn't improve for this many epochs
-            coral_lambda: Weight on the CORAL alignment penalty
-        """
+                 n_epochs=500, batch_size=256, early_stopping_rounds=10):
         self.hidden_dims = hidden_dims
         self.dropout = dropout
         self.lr = lr
         self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.early_stopping_rounds = early_stopping_rounds
-        self.coral_lambda = coral_lambda
-        self.num_coral_pairs = num_coral_pairs
         self.feature_extractor = None
         self.head = None
 
     def _build_model(self, input_dim):
-        """Build feature extractor and regression head."""
         layers = []
         prev_dim = input_dim
         for h in self.hidden_dims:
@@ -73,25 +60,25 @@ class CORAL:
         feats = self.feature_extractor(X)
         return self.head(feats), feats
 
+    @abstractmethod
+    def _compute_penalty(self, feats, env_batch, subset_envs):
+        ...
+
     def fit(self, X, y, eval_set=None, envs=None):
         """
-        Train with Deep CORAL.
+        Train with domain alignment penalty.
 
         Args:
-            X: Features array of shape (n_samples, n_features)
-            y: Target array of shape (n_samples,)
-            eval_set: Optional list with one tuple [(X_val, y_val)] for early stopping
-            envs: Environment labels (required for CORAL penalty)
-
-        Returns:
-            self
+            X: Features array (n_samples, n_features)
+            y: Targets array (n_samples,)
+            eval_set: Optional [(X_val, y_val)] for early stopping
+            envs: Environment labels (required)
         """
         if envs is None:
-            raise ValueError("CORAL requires environment labels (envs)")
+            raise ValueError(f"{type(self).__name__} requires environment labels (envs)")
 
         self._build_model(X.shape[1])
 
-        # Map environment labels to integer indices
         unique_envs = np.unique(envs)
         env_to_idx = {e: i for i, e in enumerate(unique_envs)}
         env_indices = np.array([env_to_idx[e] for e in envs])
@@ -111,7 +98,7 @@ class CORAL:
             best_head_weights = None
             rounds_without_improvement = 0
 
-        pbar = tqdm(range(self.n_epochs), desc="CORAL", unit="epoch")
+        pbar = tqdm(range(self.n_epochs), desc=type(self).__name__, unit="epoch")
         for _ in pbar:
             self.feature_extractor.train()
             self.head.train()
@@ -120,26 +107,12 @@ class CORAL:
                 pred, feats = self._forward(X_batch)
                 mse = F.mse_loss(pred, y_batch)
 
-                # Global stats for the whole batch
-                global_mean = feats.mean(0)
-                cent_batch = feats - global_mean
-                global_cov = (cent_batch.T @ cent_batch) / (len(feats) - 1)
-
-                # Align each environment to global stats
-                coral = torch.tensor(0.0, device=feats.device)
                 unique_batch_envs = torch.unique(env_batch)
-                unique_batch_envs = unique_batch_envs[torch.randperm(len(unique_batch_envs))]
-                subset_envs = unique_batch_envs[:self.num_coral_pairs]  
-                for env_id in subset_envs:
-                    mask = env_batch == env_id
-                    if mask.sum() > 1:
-                        feats_env = feats[mask]
-                        m_env = feats_env.mean(0)
-                        c_env = (feats_env - m_env).T @ (feats_env - m_env) / (len(feats_env) - 1)
-                        coral += (m_env - global_mean).pow(2).mean()
-                        coral += (c_env - global_cov).pow(2).mean()
+                perm = torch.randperm(len(unique_batch_envs))
+                subset_envs = unique_batch_envs[perm[:self._n_pairs]]
 
-                loss = mse + self.coral_lambda * (coral / len(unique_batch_envs))
+                penalty, lam = self._compute_penalty(feats, env_batch, subset_envs)
+                loss = mse + lam * penalty
                 loss.backward()
                 optimizer.step()
 
@@ -169,17 +142,97 @@ class CORAL:
         return self
 
     def predict(self, X):
-        """
-        Make predictions.
-
-        Args:
-            X: Features array of shape (n_samples, n_features)
-
-        Returns:
-            Predictions array of shape (n_samples,)
-        """
         self.feature_extractor.eval()
         self.head.eval()
         with torch.no_grad():
             X_t = torch.tensor(X, dtype=torch.float32)
             return self.head(self.feature_extractor(X_t)).numpy().ravel()
+
+
+class CORAL(_AbstractDomainAlignment):
+    """
+    Deep CORAL regressor with sklearn-style fit/predict API.
+
+    Minimizes MSE plus a CORAL penalty that aligns feature distribution
+    means and covariances across training environments.
+    """
+
+    def __init__(self, hidden_dims=[128, 64], dropout=0.1, lr=1e-3,
+                 n_epochs=500, batch_size=256, early_stopping_rounds=10,
+                 coral_lambda=1.0, num_coral_pairs=10):
+        super().__init__(hidden_dims=hidden_dims, dropout=dropout, lr=lr,
+                         n_epochs=n_epochs, batch_size=batch_size,
+                         early_stopping_rounds=early_stopping_rounds)
+        self.coral_lambda = coral_lambda
+        self.num_coral_pairs = num_coral_pairs
+        self._n_pairs = num_coral_pairs
+
+    def _compute_penalty(self, feats, env_batch, subset_envs):
+        global_mean = feats.mean(0)
+        cent_batch = feats - global_mean
+        global_cov = (cent_batch.T @ cent_batch) / (len(feats) - 1)
+        coral = torch.tensor(0.0, device=feats.device)
+        for env_id in subset_envs:
+            mask = env_batch == env_id
+            if mask.sum() > 1:
+                f = feats[mask]
+                m = f.mean(0)
+                c = (f - m).T @ (f - m) / (len(f) - 1)
+                coral += (m - global_mean).pow(2).mean()
+                coral += (c - global_cov).pow(2).mean()
+        return coral / len(subset_envs), self.coral_lambda
+
+
+class MMD(_AbstractDomainAlignment):
+    """
+    MMD regressor using multi-scale Gaussian kernel, sklearn-style fit/predict API.
+
+    Minimizes MSE plus a pairwise MMD penalty between sampled environment pairs,
+    encouraging domain-invariant feature representations.
+
+    Adapted from https://github.com/mlfoundations/tableshift
+    """
+
+    def __init__(self, hidden_dims=[128, 64], dropout=0.1, lr=1e-3,
+                 n_epochs=500, batch_size=1024, early_stopping_rounds=10,
+                 mmd_gamma=1.0, num_mmd_pairs=5):
+        super().__init__(hidden_dims=hidden_dims, dropout=dropout, lr=lr,
+                         n_epochs=n_epochs, batch_size=batch_size,
+                         early_stopping_rounds=early_stopping_rounds)
+        self.mmd_gamma = mmd_gamma
+        self.num_mmd_pairs = num_mmd_pairs
+        self._n_pairs = num_mmd_pairs
+
+    def _my_cdist(self, x1, x2):
+        # Copied from https://github.com/mlfoundations/tableshift
+        x1_norm = x1.pow(2).sum(dim=-1, keepdim=True)
+        x2_norm = x2.pow(2).sum(dim=-1, keepdim=True)
+        res = torch.addmm(x2_norm.T, x1, x2.T, alpha=-2).add_(x1_norm)
+        return res.clamp_min_(1e-30)
+
+    def _gaussian_kernel(self, x, y, gamma=[0.001, 0.01, 0.1, 1, 10, 100, 1000]):
+        # Copied from https://github.com/mlfoundations/tableshift
+        D = self._my_cdist(x, y)
+        K = torch.zeros_like(D)
+        for g in gamma:
+            K.add_(torch.exp(D.mul(-g)))
+        return K
+
+    def _compute_penalty(self, feats, env_batch, subset_envs):
+        env_feats = [
+            feats[env_batch == e]
+            for e in subset_envs
+            if (env_batch == e).sum() > 1
+        ]
+        penalty = torch.tensor(0.0, device=feats.device)
+        n_pairs = 0
+        for i in range(len(env_feats)):
+            for j in range(i + 1, len(env_feats)):
+                Kxx = self._gaussian_kernel(env_feats[i], env_feats[i]).mean()
+                Kyy = self._gaussian_kernel(env_feats[j], env_feats[j]).mean()
+                Kxy = self._gaussian_kernel(env_feats[i], env_feats[j]).mean()
+                penalty += Kxx + Kyy - 2 * Kxy
+                n_pairs += 1
+        if n_pairs > 0:
+            penalty /= n_pairs
+        return penalty, self.mmd_gamma
