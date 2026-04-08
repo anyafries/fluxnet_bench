@@ -103,6 +103,7 @@ def get_data_split(
     remove_missing_target=False,
     keep_lonlat=False,
     astorch=False,
+    return_colnames=False,
 ):
     """
     Get the train/test data for a specific setting.
@@ -250,11 +251,14 @@ def get_data_split(
         xtest = torch.tensor(xtest, dtype=torch.float32)
         ytest = torch.tensor(ytest, dtype=torch.float32).view(-1, 1)
 
-    return (
+    out = (
         (xtrain, ytrain, envs_train), 
         (xval, yval, envs_val),
         (xtest, ytest, envs_test, sites_test, times_test)
     )
+    if return_colnames:
+        out = out + (train.columns[xcols].tolist(), train.columns[ycol].tolist()[0])
+    return out
 
 # -----------------------------------------------------------------------
 # -------------------------- Predictions I/O ----------------------------
