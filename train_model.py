@@ -29,7 +29,6 @@ if __name__ == "__main__":
                         choices=['GPP', 'NEE', 'Qle', 'all'],
                         default='all', help="Target variable to predict")
     parser.add_argument("--model_name", type=str, 
-                        choices=['xgb', 'lr', 'mlp', 'gdro', 'coral', 'mmd'],
                         default='lr', help="Model to use for the experiment")
 
     args = parser.parse_args()
@@ -72,7 +71,7 @@ if __name__ == "__main__":
                 setting,
                 target=target,
                 # only remove missing features for models that can't handle them
-                remove_missing_features=model_name in ['lr', 'mlp', 'gdro', 'coral', 'mmd'],  
+                remove_missing_features=model_name in ['lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd'],
                 remove_missing_target=True,
             )
             xtrain, ytrain, envs_train = train

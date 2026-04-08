@@ -1,14 +1,24 @@
 """
 Model definitions for FLUXNET benchmark.
 
-This module contains baseline models for the benchmark.
+Available models:
+  - 'lr'            : Linear Regression (sklearn)
+  - 'ridge'         : Ridge Regression (sklearn)
+  - 'xgb'           : XGBoost Regressor
+  - 'mlp'           : Multi-layer Perceptron
+  - 'gdro'          : Group DRO (worst-group loss minimization)
+  - 'coral'         : CORAL domain adaptation
+  - 'mmd'           : MMD domain adaptation
+  - 'maxrm_mse'     : MaxRM Random Forest with MSE risk
+  - 'maxrm_regret'  : MaxRM Random Forest with regret risk
 """
 
 import itertools
 
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from xgboost import XGBRegressor
 
+from .maxrm_rf import MaxRM_RF
 from .mlp import MLP
 from .gdro import GroupDRO
 from .coral import CORAL, MMD
@@ -23,8 +33,8 @@ def get_model(model_name, params=None):
     Factory function to get a model instance by name.
 
     Args:
-        model_name (str): Name of the model ('xgb', 'lr', 'mlp', 'gdro')
-        params (dict, optional): Parameters to initialize the model. 
+        model_name (str): Name of the model. See module docstring for options.
+        params (dict, optional): Parameters to initialize the model.
             If None, defaults will be used.
 
     Returns:
@@ -39,6 +49,8 @@ def get_model(model_name, params=None):
         return XGBRegressor(**params)
     elif model_name == 'lr':
         return LinearRegression()
+    elif model_name == 'ridge':
+        return Ridge(**params)
     elif model_name == 'mlp':
         return MLP(**params)
     elif model_name == 'gdro':
@@ -47,10 +59,14 @@ def get_model(model_name, params=None):
         return CORAL(**params)
     elif model_name == 'mmd':
         return MMD(**params)
+    elif model_name == 'maxrm_mse':
+        return MaxRM_RF(risk='mse', **params)
+    elif model_name == 'maxrm_regret':
+        return MaxRM_RF(risk='regret', **params)
     else:
         raise NotImplementedError(
             f"Model `{model_name}` not implemented. "
-            f"Available models: 'xgb', 'lr', 'mlp', 'gdro', 'coral', 'mmd'"
+            f"Available models: 'xgb', 'lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd', 'maxrm_mse', 'maxrm_regret'"
         )
 
 
@@ -72,6 +88,11 @@ def get_default_params(model_name):
             'max_depth': 5,
             'learning_rate': 0.1,
             'early_stopping_rounds': 10,
+        }
+    elif model_name in ['maxrm_mse', 'maxrm_regret']:
+        params = {
+            'n_estimators': 100,
+            'min_samples_leaf': 30,
         }
     elif model_name == 'mlp':
         params = {
@@ -124,9 +145,16 @@ def get_param_grid(model_name):
     """
     grid = []
     
-    if model_name == 'lr':
-        # Linear Regression has no major hyperparameters in this setup
+    if model_name in ['lr', 'ridge']:
         grid = [{}]
+
+    elif model_name in ['maxrm_mse', 'maxrm_regret']:
+        options = {
+            'n_estimators': [100, 500],
+            'min_samples_leaf': [10, 30],
+        }
+        keys, values = zip(*options.items())
+        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
     elif model_name == 'xgb':
         # Focus on depth and shrinkage
