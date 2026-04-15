@@ -35,6 +35,14 @@ def _apply_mask(df, mask):
     return df
 
 
+def _ensure_daily(df, mask, min_contribution_hour_to_day=0.5):
+    """Helper to convert hourly data to daily before coarser aggregations."""
+    df_daily = aggregate_daily(df, mask=mask, min_contribution=min_contribution_hour_to_day)
+    # Create a new mask based on valid aggregated daily values
+    new_mask = df_daily['y_true'].notna() & df_daily['y_pred'].notna()
+    return df_daily, new_mask
+
+
 def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean',
                         early_masking=False):
     """
@@ -96,14 +104,29 @@ def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean',
 # Temporal Resampling: Daily → Coarser
 # =============================================================================
 
-def aggregate_daily(df, mask=None):
-    """No aggregation - return as-is (already daily)."""
+def aggregate_hourly(df, mask=None, min_contribution=0.5):
+    """Aggregate hourly data to daily means, or return as-is if already daily."""
     df = _apply_mask(df, mask)
-    df = df[df['valid']].drop(columns=['valid']) 
-    return df.copy()
+    return df[df['valid']].drop(columns=['valid']).copy()
 
 
-def aggregate_weekly(df, mask=None, min_contribution=0.5):
+def aggregate_daily(df, mask=None, min_contribution=0.5):
+    """Aggregate hourly data to daily means, or return as-is if already daily."""
+    df = _apply_mask(df, mask)
+    df = df.copy()
+    df['time'] = pd.to_datetime(df['time'])
+    
+    # Check if already daily (max 1 entry per env per date)
+    if df.empty or df.groupby(['env', df['time'].dt.floor('D')]).size().max() <= 1:
+        return df[df['valid']].drop(columns=['valid']).copy()
+        
+    df['_date'] = df['time'].dt.floor('D')
+    result = _agg_with_threshold(df, ['env', '_date'], min_contribution)
+    return result.rename(columns={'_date': 'time'})
+
+
+def aggregate_weekly(df, mask=None, min_contribution=0.5, 
+                     min_contribution_hour_to_day=0.5):
     """
     Aggregate daily data to weekly means.
 
@@ -111,10 +134,12 @@ def aggregate_weekly(df, mask=None, min_contribution=0.5):
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum fraction or count of valid days
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
 
     Returns:
         DataFrame with weekly aggregated values
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     df = _apply_mask(df, mask)
     df = df.copy()
     df['time'] = pd.to_datetime(df['time'])
@@ -125,7 +150,8 @@ def aggregate_weekly(df, mask=None, min_contribution=0.5):
     return result.drop(columns=['_week'])
 
 
-def aggregate_monthly(df, mask=None, min_contribution=0.5):
+def aggregate_monthly(df, mask=None, min_contribution=0.5, 
+                      min_contribution_hour_to_day=0.5):
     """
     Aggregate daily data to monthly means.
 
@@ -133,10 +159,12 @@ def aggregate_monthly(df, mask=None, min_contribution=0.5):
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum fraction or count of valid days
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
 
     Returns:
         DataFrame with monthly aggregated values
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     df = _apply_mask(df, mask)
     df = df.copy()
     df['time'] = pd.to_datetime(df['time'])
@@ -147,7 +175,8 @@ def aggregate_monthly(df, mask=None, min_contribution=0.5):
     return result.drop(columns=['_month'])
 
 
-def aggregate_yearly(df, mask=None, min_contribution=0.5):
+def aggregate_yearly(df, mask=None, min_contribution=0.5, 
+                      min_contribution_hour_to_day=0.5):
     """
     Aggregate daily data to yearly means.
 
@@ -155,10 +184,12 @@ def aggregate_yearly(df, mask=None, min_contribution=0.5):
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum fraction or count of valid days
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
 
     Returns:
         DataFrame with yearly aggregated values
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     df = _apply_mask(df, mask)
     df = df.copy()
     df['time'] = pd.to_datetime(df['time'])
@@ -187,7 +218,7 @@ def compute_msc(df, mask=None, min_contribution=2,
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean Series for valid data
         min_contribution: Min years per DOY or fraction
-        min_contribution_hour_to_day: TODO
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
         method: 'mean' or 'median'
         return_long: If True, expand MSC to original time series length
         return_outlier_mask: If True, also return outlier detection results
@@ -199,6 +230,7 @@ def compute_msc(df, mask=None, min_contribution=2,
         If return_long=True: DataFrame with MSC values at original timestamps
         If return_outlier_mask=True: tuple of (msc, outlier_mask, lower_thresh, upper_thresh)
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     df = _apply_mask(df, mask)
     df = df.copy()
     
@@ -208,13 +240,6 @@ def compute_msc(df, mask=None, min_contribution=2,
 
     if return_outlier_mask:
         raise DeprecationWarning("Outlier detection is not yet implemented in this function.")
-
-    # if there are not unique (doy, year) pairs, we need to aggregate to daily first
-    if df.groupby(['env', 'year', 'doy']).size().max() > 1:
-        # TODO 
-        # aggregate to daily first, then compute MSC on the daily-aggregated data
-        # use min_contribution_hour_to_day
-        raise NotImplementedError("Input data has multiple entries per (env, year, doy).")
 
     agg_func = method if method in ['mean', 'median'] else 'mean'
 
@@ -240,7 +265,9 @@ def compute_msc(df, mask=None, min_contribution=2,
 # Derived Aggregations
 # =============================================================================
 
-def aggregate_seasonal(df, mask=None, min_contribution=2, method='mean'):
+def aggregate_seasonal(df, mask=None, min_contribution=2, 
+                       min_contribution_hour_to_day=0.5,
+                       method='mean'):
     """
     Compute mean seasonal cycle (short form).
 
@@ -250,11 +277,13 @@ def aggregate_seasonal(df, mask=None, min_contribution=2, method='mean'):
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum years with valid data per DOY
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
         method: 'mean' or 'median'
 
     Returns:
         DataFrame with one row per (env, doy)
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     return compute_msc(df, mask=mask, min_contribution=min_contribution,
                        method=method, return_long=False)
 
@@ -271,12 +300,13 @@ def aggregate_anomaly(df, mask=None, min_contribution=2,
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum years for MSC computation
-        min_contribution_hour_to_day: TODO
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
         method: 'mean' or 'median' for MSC
 
     Returns:
         DataFrame with anomaly values (original - MSC)
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     df = _apply_mask(df, mask)
     df = df.copy()
 
@@ -284,12 +314,6 @@ def aggregate_anomaly(df, mask=None, min_contribution=2,
     df['time'] = pd.to_datetime(df['time'])
     df['doy'] = df['time'].dt.dayofyear
     df['year'] = df['time'].dt.year
-
-    if df.groupby(['env', 'year', 'doy']).size().max() > 1:
-        # TODO 
-        # aggregate to daily first, then compute MSC on the daily-aggregated data
-        # use min_contribution_hour_to_day
-        raise NotImplementedError("Input data has multiple entries per (env, year, doy).")
 
     df['time'] = pd.to_datetime(df['time'])
     df['doy'] = df['time'].dt.dayofyear
@@ -308,7 +332,8 @@ def aggregate_anomaly(df, mask=None, min_contribution=2,
     return result[['env', 'time', 'y_true', 'y_pred']]
 
 
-def aggregate_iav(df, mask=None, min_contribution=0.5):
+def aggregate_iav(df, mask=None, min_contribution=0.5,
+                  min_contribution_hour_to_day=0.5):
     """
     Compute inter-annual variability (IAV).
 
@@ -318,10 +343,13 @@ def aggregate_iav(df, mask=None, min_contribution=0.5):
         df: DataFrame with y_true, y_pred, env, time columns
         mask: Optional boolean mask for valid data
         min_contribution: Minimum fraction/count of valid days per year
+        min_contribution_hour_to_day: Minimum fraction or count of valid hours
 
     Returns:
         DataFrame with IAV values (yearly mean - site mean)
     """
+    df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
+
     # First aggregate to yearly
     yearly = aggregate_yearly(df, mask=mask, min_contribution=min_contribution)
 
@@ -340,6 +368,7 @@ def aggregate_iav(df, mask=None, min_contribution=0.5):
 # =============================================================================
 
 AGGREGATIONS = {
+    'hourly': aggregate_hourly,
     'daily': aggregate_daily,
     'weekly': aggregate_weekly,
     'monthly': aggregate_monthly,

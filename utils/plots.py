@@ -13,7 +13,7 @@ from utils.utils import setup_logging
 logger = setup_logging(__name__)
 
 PLOTS_DIR = 'results/plots'
-SCALES = ['daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav']
+SCALES = ['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav']
 
 # Model ordering: lr first, xgb second, then alphabetically
 MODEL_ORDER = ['lr', 'xgb']
@@ -96,7 +96,7 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
     """
     os.makedirs(outdir, exist_ok=True)
 
-    fig, axes = plt.subplots(3, 2, figsize=(6, 8))
+    fig, axes = plt.subplots(4, 2, figsize=(6, 8))
     axes = axes.flatten()
 
     for i, scale in enumerate(SCALES):

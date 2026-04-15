@@ -53,42 +53,31 @@ G8.sort()
 G9.sort()
 G10.sort()
 
-# -----------------------------------------------------------------------
-# ------------------ Functions for CV fold generation -------------------
-# -----------------------------------------------------------------------
+# ---------------------------------------------------
+# ------------------ Loading data -------------------
+# ---------------------------------------------------
 
-def generate_fold_info(df, setting, fold_size=5, seed=42):
-    """
-    Generate fold information based on the setting.
-    Args:
-        df (pd.DataFrame): The input dataframe containing the data.
-        setting (str): The cross-validation setting.
-        fold_size (int, optional): The size of each fold for certain settings. Defaults to 5.
-        seed (int, optional): Random seed for reproducibility. Defaults to 42.
-    Returns:
-        list: A list of groups for cross-validation.
-    """
-    if setting in ["time-split"]:
-        sites = df["site_id"].dropna().unique()
-        # only keep sites with >=7 years of data
-        # TODO: it should also be where each (site, year) has enough samples
-        site_years = df.groupby("site_id")["year"].nunique()
-        sites = site_years[site_years >= 7].index.values
-        sites = sorted(sites)
-        groups = [sites]
+DROP_COLS = ['PFT_BSV', 'PFT_SNO', 'PFT_URB']
 
-    elif setting == "spatial-easy":
-        sites = pd.Series(df["site_id"].dropna().unique())
-        print(f"Total sites: {len(sites)}")
-        if len(sites) <= 100:
-            groups = [G1, G2, G3, G4]
-        else:
-            groups = [G1, G2, G3, G4, G5, G6, G7, G8, G9, G10]
-        
-    elif setting == "spatial-hard":
-        raise NotImplementedError("spatial-hard setting not implemented yet")
+def load_data(path):
+    """Load the data from the specified path."""
+    # each file in this folder is a site, and we want to load them all and concatenate into one dataframe
+    path = os.path.join(path, "sites")
+    dfs = []
+    for filename in os.listdir(path):
+        if filename.endswith(".csv"):
+            site_id = filename.split(".")[0]
+            df_site = pd.read_csv(os.path.join(path, filename))
+            df_site["site_id"] = site_id
+            dfs.append(df_site)
+    df = pd.concat(dfs, ignore_index=True)
+    df = df.drop(columns=DROP_COLS)
 
-    return groups
+    bool_cols = df.select_dtypes(include='bool').columns
+    for col in bool_cols:
+        nunique = df[col].nunique(dropna=False)
+        assert nunique == 2, f"Expected boolean column {col} to have exactly 2 unique values, but found {nunique}"
+    return df
 
 
 # -----------------------------------------------------------------------
@@ -98,12 +87,12 @@ def generate_fold_info(df, setting, fold_size=5, seed=42):
 def get_data_split(
     df,
     setting,
+    path,
     target="GPP",
-    remove_missing_features=False,
     remove_missing_target=False,
     keep_lonlat=False,
     astorch=False,
-    return_colnames=False,
+    return_colnames=False
 ):
     """
     Get the train/test data for a specific setting.
@@ -112,9 +101,6 @@ def get_data_split(
         setting (str): The cross-validation setting.
         target (str, optional): The target variable name.
             Defaults to "GPP".
-        remove_missing_features (bool, optional): Whether to remove rows with 
-            missing values.
-            Defaults to False.
         remove_missing_target (bool, optional): Whether to remove rows with
             missing target values. Defaults to False.
         keep_lonlat (bool, optional): Whether to keep longitude and latitude
@@ -124,43 +110,22 @@ def get_data_split(
     Returns:
         tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
     """
-    # Determine min_samples based on setting
-    # TODO[LATER]: should be handled by the cleaned data
-    min_samples = 100
-
     # Subset the correct data
-    if setting in ["spatial-easy", "spatial-hard"]:
+    if setting == "time-split":
+        sites_to_keep = pd.read_csv(os.path.join(BASE_DIR, "data/sites_with_2018.csv"))
+        df_out = df.loc[df["site_id"].isin(sites_to_keep['site_id'].values)].copy()
+    else: # setting in ["spatial-easy", "spatial-hard"]:
         df_out = df.copy()
-    elif setting == "time-split":
-        # only keep sites with >=7 years of data
-        # TODO: it should also be where each (site, year) has enough samples
-        site_years = df.groupby("site_id")["year"].nunique()
-        sites = site_years[site_years >= 7].index.values
-        df_out = df.loc[df["site_id"].isin(sites)].copy()
-    else:
-        raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
-
-    # create time features
-    if "season" in df_out.columns:
-        df_out["season"] = df_out["season"].astype(int)
-        df_out = pd.get_dummies(
-            df_out, columns=["season"], prefix="season", dtype=np.float64
-        )
-    if "month" in df_out.columns:
-        df_out["month_sin"] = np.sin(2 * np.pi * df_out["month"] / 12)
-        df_out["month_cos"] = np.cos(2 * np.pi * df_out["month"] / 12)
-    if "hour" in df_out.columns:
-        df_out["hour_sin"] = np.sin(2 * np.pi * df_out["hour"] / 24)
-        df_out["hour_cos"] = np.cos(2 * np.pi * df_out["hour"] / 24)
+    # else:
+    #     raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
 
     # Preserve time column if needed for metadata
-    if "time" in df_out.columns:
-        time_col = df_out["time"].copy()
+    time_col = df_out["time"].copy()
 
     # drop columns
-    cols_to_drop = ["date", "hour", "time"]
+    cols_to_drop = ["time"]
     if not keep_lonlat:
-        cols_to_drop += ["longitude", "latitude"]
+        cols_to_drop += ["tower_lat", "tower_lon"]
     for col in cols_to_drop:
         if col in df_out.columns:
             df_out.drop(columns=[col], inplace=True)
@@ -169,27 +134,22 @@ def get_data_split(
     if setting == "time-split":
         df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
         # split years chronologically
-        unique_years = np.sort(df_out["year"].unique())
-        train_years, val_years, test_years = unique_years[:3], unique_years[3], unique_years[4:7]
-        train = df_out.loc[df_out["year"].isin(train_years)].copy()
-        val = df_out.loc[df_out["year"] == val_years].copy()
-        test = df_out.loc[df_out["year"].isin(test_years)].copy()
-    elif setting in ["spatial-easy", "spatial-hard"]:
-        # split by group of sites
-        if min_samples is not None:
-            site_counts = df_out["site_id"].value_counts()
-            valid_sites = site_counts[site_counts >= min_samples].index
-            logger.info(f"Keeping {len(valid_sites)}/{len(site_counts)} sites with >= {min_samples} samples")
-            df_out = df_out.loc[df_out["site_id"].isin(valid_sites)].copy()
-
+        train = df_out.loc[df_out["year"] < 2018].copy()
+        val = df_out.loc[df_out["year"] == 2018].copy()
+        test = df_out.loc[df_out["year"] > 2018].copy()
+    else:
         # get held-out group
         if setting == "spatial-easy":
             test_group, val_group = G1, G2
         elif setting == "spatial-hard":
             test_group = SOUTHERN_SITES
             # for val group, we can use the sites that are in G1-G4 but not in the test group
-            val_group = [site for group in [G1, G2, G3, G4] for site in group if site not in test_group][:25]
-            assert len(test_group) == len(val_group) == 25, f"Expected 25 sites in test and val groups, got {len(test_group)} and {len(val_group)}"
+            val_group = [site for group in [G1, G2, G3, G4] 
+                         for site in group if site not in test_group][:25]
+            assert len(test_group) == len(val_group) == 25,\
+                f"Expected 25 sites in test and val groups, got {len(test_group)} and {len(val_group)}"
+        else:
+            raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
 
         train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
         val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
@@ -199,19 +159,21 @@ def get_data_split(
             raise ValueError(f"No test data for group {test_group}")
     del df_out
 
-    #  for columns GPP, NEE, Qle, make the values np.nan where mask==0
-    for col in ["GPP", "NEE", "Qle"]:
-        train.loc[train["mask"] == 0, col] = np.nan
-        val.loc[val["mask"] == 0, col] = np.nan
+    #  for columns GPP, NEE, ET, make the values np.nan where qc_mask==0
+    for col in ["GPP", "NEE", "ET"]:
+        train.loc[train["qc_mask"] == 0, col] = np.nan
+        val.loc[val["qc_mask"] == 0, col] = np.nan
         if remove_missing_target:
             train = train.dropna(subset=[col])
             val = val.dropna(subset=[col])
 
     # drop rows with any missing values (excluding target if remove_missing_target is False)
-    if remove_missing_features:
-        train = train.dropna(subset=[col for col in train.columns if col != target])
-        val = val.dropna(subset=[col for col in val.columns if col != target])
-        test = test.dropna(subset=[col for col in test.columns if col != target])
+    feature_cols = [col for col in train.columns if col != target]
+    incomplete_train = train[feature_cols].isna().any(axis=1).sum()
+    incomplete_val = val[feature_cols].isna().any(axis=1).sum()
+    incomplete_test = test[feature_cols].isna().any(axis=1).sum()
+    assert incomplete_train == incomplete_val == incomplete_test == 0, \
+        f"Expected no missing values in features, but found {incomplete_train} in train, {incomplete_val} in val, and {incomplete_test} in test"
 
     # clean up
     if setting == "time-split":
@@ -224,9 +186,9 @@ def get_data_split(
 
     # Extract metadata before dropping columns
     sites_test = test["site_id"].copy()
-    times_test = time_col.loc[test.index] if time_col is not None else None
+    times_test = time_col.loc[test.index]
 
-    for col in ["site_id", "year", "month", "site_year", "mask"]:
+    for col in ["site_id", "year", "site_year", "qc_mask"]:
         if col in train.columns:
             train = train.drop(columns=[col])
             val = val.drop(columns=[col])
@@ -235,7 +197,7 @@ def get_data_split(
     val = val.astype(np.float64)
     test = test.astype(np.float64) 
 
-    xcols = ~train.columns.isin(['GPP', 'NEE', 'Qle'])
+    xcols = ~train.columns.isin(['GPP', 'NEE', 'ET'])
     ycol = train.columns == target
 
     # split into x,y
@@ -265,7 +227,7 @@ def get_data_split(
 # -----------------------------------------------------------------------
 
 
-def load_predictions(setting, target, model_name):
+def load_predictions(setting, target, model_name, val_strategy):
     """
     Load predictions file for a given experiment.
 
@@ -273,18 +235,19 @@ def load_predictions(setting, target, model_name):
         setting: Experiment setting (e.g., 'spatial-easy', 'time-split')
         target: Target variable (e.g., 'GPP', 'NEE')
         model_name: Model name (e.g., 'lr', 'xgb')
+        val_strategy: Validation strategy used for model selection ('mean', 'max', 'discrepancy')
 
     Returns:
         pd.DataFrame with y_true, y_pred, and env columns
     """
-    pred_path = get_predictions_path(setting, target, model_name)
+    pred_path = get_predictions_path(setting, target, model_name, val_strategy)
     df = load_csv(pred_path)
     if df is None:
         raise FileNotFoundError(f"Predictions file not found: {pred_path}")
     return df
 
 
-def save_predictions(test, ypred, setting, target, model_name):
+def save_predictions(test, ypred, setting, target, model_name, val_strategy):
     """Save predictions DataFrame to CSV."""
     # TODO: add mask?
     xtest, ytest, envs_test, sites_test, times_test = test
@@ -296,7 +259,7 @@ def save_predictions(test, ypred, setting, target, model_name):
         'time': times_test,
         # 'mask': mask,
     })
-    
-    pred_path = get_predictions_path(setting, target, model_name)
+
+    pred_path = get_predictions_path(setting, target, model_name, val_strategy)
     save_csv(predictions_df, pred_path)
     return predictions_df
