@@ -210,12 +210,12 @@ def get_data_split(
             val = val.dropna(subset=[col])
 
     # drop rows with any missing values (excluding target if remove_missing_target is False)
-    feature_cols = [col for col in train.columns if col != target]
+    feature_cols = [col for col in train.columns if col not in ['GPP', 'NEE', 'ET']]
     incomplete_train = train[feature_cols].isna().any(axis=1).sum()
     incomplete_val = val[feature_cols].isna().any(axis=1).sum()
     incomplete_test = test[feature_cols].isna().any(axis=1).sum()
     assert incomplete_train == incomplete_val == incomplete_test == 0, \
-        f"Expected no missing values in features, but found {incomplete_train} in train, {incomplete_val} in val, and {incomplete_test} in test"
+        f"Expected no missing values in features, but found {incomplete_train} in train and {incomplete_val} in val, and {incomplete_test} in test"
 
     # clean up
     if setting == "time-split":
