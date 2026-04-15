@@ -13,7 +13,10 @@ from utils.utils import setup_logging, get_metrics_path
 logger = setup_logging(__name__)
 
 ALL_SETTINGS = [
-    'time-split', 'spatial-easy', 'spatial-hard'
+    'time-split', 'spatial-easy', 'spatial-hard',
+    'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET',
+    'forest', 'schrub-savanna', 'grass-savanna',
+    'TA', 'VPD', 'LST', 'europe', 'rest-of-world',
 ]
 ALL_TARGETS = ['GPP', 'NEE', 'ET']
 

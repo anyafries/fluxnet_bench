@@ -148,8 +148,50 @@ def get_data_split(
                          for site in group if site not in test_group][:25]
             assert len(test_group) == len(val_group) == 25,\
                 f"Expected 25 sites in test and val groups, got {len(test_group)} and {len(val_group)}"
+        elif setting[:6] == "random":
+            seed = int(setting.split("-")[1]) if "-" in setting else 42
+            np.random.seed(seed)
+            site_ids = df_out["site_id"].unique().tolist()
+            np.random.shuffle(site_ids)
+            test_group = site_ids[:25]
+            val_group = site_ids[25:50]
         else:
-            raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
+            if setting in ["PFT_CRO", "PFT_ENF", "PFT_GRA", "PFT_WET"]:
+                test_group = df_out.loc[df_out[setting] == 1, "site_id"].unique().tolist()
+            elif setting == "forest":
+                forest_columns = ["PFT_DBF", "PFT_DNF", "PFT_EBF"]
+                test_group = df_out.loc[df_out[forest_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
+            elif setting == "schrub-savanna":
+                shrub_savanna_columns = ["PFT_OSH", "PFT_SAV", "PFT_WSA"]
+                test_group = df_out.loc[df_out[shrub_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
+            elif setting == 'grass-savanna':
+                grass_savanna_columns = ["PFT_GRA", "PFT_SAV", "PFT_WSA"]
+                test_group = df_out.loc[df_out[grass_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
+            elif setting == 'TA':
+                test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst']
+            elif setting == "VPD":
+                test_group = ['AU-ASM', 'AU-Lon', 'AU-Dry', 'US-SRM', 'US-SRG', 'US-Jo2', 'AU-DaS', 'US-xJR', 'US-SRS', 'US-Whs', 'US-Wkg', 'AU-GWW', 'AU-Cpr', 'US-Ses', 'US-CdM', 'US-Seg', 'US-Ton', 'US-RGo', 'AU-Lit', 'IL-Yat', 'ES-Abr', 'ES-LM2', 'ES-LM1', 'US-CGG', 'US-Hn2']
+            elif setting == "LST":
+                test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA']
+            elif setting == "europe":
+                europe = [
+                    'IT', 'DE', 'FR', 'ES', 'SE', 'CZ', 
+                    'FI', 'BE', 'DK', 'RU', 'CH', 'IE', 
+                    'NL', 'UK'
+                ]
+                test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in europe]
+            elif setting == "rest-of-world":
+                rest = ['AU', 'AR', 'CL', 'IL', 'JP', 'BR'] + ['CA']
+                test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in rest]
+            else:
+                raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
+            
+            all_sites = df_out["site_id"].unique().tolist()
+            remaining_sites = [site for site in all_sites if site not in test_group]
+            np.random.seed(42)
+            np.random.shuffle(remaining_sites)
+            val_group = remaining_sites[:25]
+        
 
         train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
         val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
