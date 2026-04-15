@@ -157,7 +157,7 @@ def plot_cdf(results, target, metric, scale, setting, ax):
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
     ax.set_xlabel(f'{metric.upper()} (x)')
 
-    env = "sites" if setting.startswith('spatial') else "site-years"
+    env = "sites-years" if setting == 'time-split' else "sites"
     if higher_better:
         ax.set_ylabel(f'% of {env} with {metric.upper()} >= x')
     else:
@@ -165,6 +165,8 @@ def plot_cdf(results, target, metric, scale, setting, ax):
 
     if metric.lower() == 'nse':
         ax.set_xlim(-0.5, 1.0)
+    else:
+        ax.set_xlim(left=0)
 
     ax.set_title(setting)
     ax.legend()
