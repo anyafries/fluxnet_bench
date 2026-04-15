@@ -96,26 +96,26 @@ DEFAULT_METRICS = {
 # -------------------------- Metrics I/O --------------------------------
 # -----------------------------------------------------------------------
 
-def compute_and_save_metrics(predictions_df, setting, target, model_name):
+def compute_and_save_metrics(predictions_df, setting, target, model_name, val_strategy):
     """Save metrics DataFrame to CSV."""
-    metrics_path = get_metrics_path(setting, target, model_name)
+    metrics_path = get_metrics_path(setting, target, model_name, val_strategy)
     metrics_df = compute_metrics(predictions_df, model_name, setting, target)
     save_csv(metrics_df, metrics_path)
     return metrics_df
 
 
-def load_metrics(setting, target, model_name):
+def load_metrics(setting, target, model_name, val_strategy):
     """Load metrics file for a given experiment."""
-    metrics_path = get_metrics_path(setting, target, model_name)
+    metrics_path = get_metrics_path(setting, target, model_name, val_strategy)
     return load_csv(metrics_path)
 
 
-def save_best_params(best_params, setting, target, model_name):
+def save_best_params(best_params, setting, target, model_name, val_strategy):
     """Save the best hyperparameter dictionary to a JSON file."""
-    path = get_params_path(setting, target, model_name)
+    path = get_params_path(setting, target, model_name, val_strategy)
     # Ensure the directory exists (in case it's the first file being saved)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    
+
     with open(path, 'w') as f:
         json.dump(best_params, f, indent=4)
     logger.info(f"Saved best parameters to {path}")

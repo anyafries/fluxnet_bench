@@ -17,24 +17,25 @@ from utils.utils import setup_logging, find_available_experiments
 
 logger = setup_logging(__name__)
 
-def get_metrics(setting, target, model_name, rerun=False):
+def get_metrics(setting, target, model_name, val_strategy, rerun=False):
     """Get metrics for an experiment, computing if necessary."""
     # Try loading existing metrics
     if not rerun:
-        metrics_df = load_metrics(setting, target, model_name)
+        metrics_df = load_metrics(setting, target, model_name, val_strategy)
         if metrics_df is not None:
             return metrics_df
 
     # Load predictions
-    predictions_df = load_predictions(setting, target, model_name)
+    predictions_df = load_predictions(setting, target, model_name, val_strategy)
 
     # Compute and save metrics
-    metrics_df = compute_and_save_metrics(predictions_df, setting, target, model_name)
-    
+    metrics_df = compute_and_save_metrics(predictions_df, setting, target, model_name, val_strategy)
+
     return metrics_df
 
 
-def load_all_metrics(settings=None, targets=None, models=None, scales=None, rerun=False):
+def load_all_metrics(settings=None, targets=None, models=None, scales=None, 
+                     val_strategy='mean', rerun=False):
     """
     Load or compute metrics for all specified experiments.
 
@@ -43,6 +44,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None, reru
         targets: List of targets to include (default: all found)
         models: List of models to include (default: all found)
         scales: List of scales to include (default: all scales in data)
+        val_strategy: Validation strategy to load ('mean', 'max', 'discrepancy')
         rerun: If True, recompute all metrics from predictions
 
     Returns:
@@ -53,19 +55,20 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None, reru
         logger.error("No experiments found in results/")
         return pd.DataFrame()
 
-    # Filter experiments
+    # Filter by val_strategy and other criteria
+    available = [(s, t, m, vs) for s, t, m, vs in available if vs == val_strategy]
     if settings:
-        available = [(s, t, m) for s, t, m in available if s in settings]
+        available = [(s, t, m, vs) for s, t, m, vs in available if s in settings]
     if targets:
-        available = [(s, t, m) for s, t, m in available if t in targets]
+        available = [(s, t, m, vs) for s, t, m, vs in available if t in targets]
     if models:
-        available = [(s, t, m) for s, t, m in available if m in models]
+        available = [(s, t, m, vs) for s, t, m, vs in available if m in models]
 
-    logger.info(f"Processing {len(available)} experiments")
+    logger.info(f"Processing {len(available)} experiments (val_strategy={val_strategy})")
 
     all_results = []
-    for setting, target, model_name in available:
-        metrics_df = get_metrics(setting, target, model_name, rerun=rerun)
+    for setting, target, model_name, vs in available:
+        metrics_df = get_metrics(setting, target, model_name, vs, rerun=rerun)
         if metrics_df is not None:
             if scales and 'scale' in metrics_df.columns:
                 metrics_df = metrics_df[metrics_df['scale'].isin(scales)]
@@ -93,13 +96,17 @@ if __name__ == "__main__":
                         help="Filter by scale (e.g., 'daily', 'weekly', 'monthly')")
     parser.add_argument("--rerun", action='store_true',
                         help="Recompute metrics from predictions")
+    parser.add_argument("--val_strategy", type=str,
+                        choices=['mean', 'max', 'discrepancy'], default='mean',
+                        help="Validation strategy to load results for (default: mean)")
 
     args = parser.parse_args()
 
     # Parse filters
     settings = [args.setting] if args.setting else None
     targets = [args.target] if args.target else None
-    models = [args.model] if args.model else None
+    # models = [args.model] if args.model else None
+    models = ['lr', 'xgb']
     scales = [args.scale] if args.scale else None
 
     # Load results
@@ -108,6 +115,7 @@ if __name__ == "__main__":
         targets=targets,
         models=models,
         scales=scales,
+        val_strategy=args.val_strategy,
         rerun=args.rerun,
     )
 
@@ -115,9 +123,12 @@ if __name__ == "__main__":
     print(results.tail())
 
     # Generate plots for all targets
+    plots_dir = f'results/plots/{args.val_strategy}'
     for target in results['target'].unique():
-        plot_metric_grid(results, target)
-        plot_metric_grid(results, target, agg='max')
-        plot_cdf_grid(results, target, scale='daily', metric='rmse')
-        create_leaderboard(results, target, metric='rmse', 
-                           filename=f'results/plots/medals_{target}.html')
+        plot_metric_grid(results, target, outdir=plots_dir)
+        plot_metric_grid(results, target, agg='max', outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='hourly', metric='rmse', outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='daily', metric='rmse', outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='weekly', metric='rmse', outdir=plots_dir)
+        create_leaderboard(results, target, metric='rmse',
+                           filename=f'{plots_dir}/medals_{target}.html')

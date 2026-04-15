@@ -30,26 +30,26 @@ logger = setup_logging(__name__)
 
 # ----------- Path helper functions -----------
 
-def get_exp_name(setting, target, model_name):
+def get_exp_name(setting, target, model_name, val_strategy):
     """Build canonical experiment name."""
-    return f"{setting}_{target}_{model_name}"
+    return f"{setting}_{target}_{model_name}_val_{val_strategy}"
 
 
-def get_predictions_path(setting, target, model_name):
+def get_predictions_path(setting, target, model_name, val_strategy):
     """Get path for predictions file."""
-    exp_name = get_exp_name(setting, target, model_name)
+    exp_name = get_exp_name(setting, target, model_name, val_strategy)
     return os.path.join(RESULTS_DIR, 'models', f"{exp_name}_predictions.csv")
 
 
-def get_metrics_path(setting, target, model_name):
+def get_metrics_path(setting, target, model_name, val_strategy):
     """Get path for metrics file."""
-    exp_name = get_exp_name(setting, target, model_name)
+    exp_name = get_exp_name(setting, target, model_name, val_strategy)
     return os.path.join(RESULTS_DIR, 'metrics', f"{exp_name}.csv")
 
 
-def get_params_path(setting, target, model_name):
+def get_params_path(setting, target, model_name, val_strategy):
     """Get path for best parameters file."""
-    exp_name = get_exp_name(setting, target, model_name)
+    exp_name = get_exp_name(setting, target, model_name, val_strategy)
     return os.path.join(RESULTS_DIR, 'models', f"{exp_name}_best_params.json")
 
 
@@ -88,10 +88,13 @@ def find_available_experiments(results_dir=None):
     experiments = []
     for filename in os.listdir(results_dir):
         if filename.endswith('_predictions.csv'):
-            # Parse filename: {setting}_{target}_{model}_predictions.csv
-            parts = filename.replace('_predictions.csv', '').rsplit('_', 2)
-            if len(parts) == 3:
-                setting, target, model_name = parts
-                experiments.append((setting, target, model_name))
+            # Parse filename: {setting}_{target}_{model}_val_{strategy}_predictions.csv
+            base = filename.replace('_predictions.csv', '')
+            for strategy in ['mean', 'max', 'discrepancy']:
+                if base.endswith(f'_val_{strategy}'):
+                    base = base[:-len(f'_val_{strategy}')]
+                    setting, target, model_name = base.rsplit('_', 2)
+                    experiments.append((setting, target, model_name, strategy))
+                    break
     return experiments
 
