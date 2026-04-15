@@ -145,8 +145,15 @@ def get_param_grid(model_name):
     """
     grid = []
     
-    if model_name in ['lr', 'ridge']:
+    if model_name == 'lr':
         grid = [{}]
+
+    elif model_name == 'ridge':
+        options = {
+            'alpha': [0.1, 1.0, 10.0],
+        }
+        keys, values = zip(*options.items())
+        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
     elif model_name in ['maxrm_mse', 'maxrm_regret']:
         options = {
