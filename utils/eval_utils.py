@@ -220,10 +220,17 @@ def compute_metrics(predictions_df, model_name, setting, target, scales=None):
     if scales is None:
         scales = list(AGGREGATIONS.keys())
 
+    MULTI_YEAR_SCALES = {'seasonal', 'iav', 'anom'}
+
     all_results = []
     for scale in scales:
         try:
-            results_df = compute_diagnostics(predictions_df, scale=scale)
+            if scale in MULTI_YEAR_SCALES and 'site_id' in predictions_df.columns:
+                df_for_scale = predictions_df.copy()
+                df_for_scale['env'] = df_for_scale['site_id']
+            else:
+                df_for_scale = predictions_df
+            results_df = compute_diagnostics(df_for_scale, scale=scale)
             results_df['model'] = model_name
             results_df['setting'] = setting
             results_df['target'] = target
