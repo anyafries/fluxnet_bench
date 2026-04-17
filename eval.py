@@ -105,8 +105,7 @@ if __name__ == "__main__":
     # Parse filters
     settings = [args.setting] if args.setting else None
     targets = [args.target] if args.target else None
-    # models = [args.model] if args.model else None
-    models = ['lr', 'xgb']
+    models = [args.model] if args.model else None
     scales = [args.scale] if args.scale else None
 
     # Load results
@@ -123,7 +122,7 @@ if __name__ == "__main__":
     print(results.tail())
 
     # Generate plots for all targets
-    plots_dir = f'results/plots/{args.val_strategy}'
+    plots_dir = f'/r/scratch/users/anfries/fluxnet_data/results/plots/{args.val_strategy}'
     for target in results['target'].unique():
         plot_metric_grid(results, target, outdir=plots_dir)
         plot_metric_grid(results, target, agg='max', outdir=plots_dir)
