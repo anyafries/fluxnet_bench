@@ -13,17 +13,18 @@ from utils.utils import setup_logging, get_metrics_path
 logger = setup_logging(__name__)
 
 ALL_SETTINGS = [
+    'time-space',
     'time-split', 'spatial-easy', 'spatial-hard',
     'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET',
     'forest', 'schrub-savanna', 'grass-savanna',
     'TA', 'VPD', 'LST', 'europe', 'rest-of-world',
-]
+] + [f'hard-{i}' for i in range(1, 6)]
 ALL_TARGETS = ['GPP', 'NEE', 'ET']
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str, default='data/',
+    parser.add_argument("--path", type=str, default='/r/scratch/users/anfries/fluxnet_data',
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
@@ -75,6 +76,8 @@ if __name__ == "__main__":
                 target=target,
                 remove_missing_target=True,
                 path=args.path,
+                standardize=model_name in ['robust-lr', 'ridge'],
+                astorch = model_name in ['mlp', 'gdro', 'coral', 'mmd']
             )
             xtrain, ytrain, envs_train = train
             xval, yval, envs_val = val
@@ -102,7 +105,11 @@ if __name__ == "__main__":
 
                 # Evaluate on validation set
                 val_preds = model.predict(xval)
-                val_df = pd.DataFrame({'y_true': yval, 'y_pred': val_preds, 'env': envs_val.values})
+                val_df = pd.DataFrame({
+                    'y_true': yval.ravel(), 
+                    'y_pred': val_preds, 
+                    'env': envs_val.values
+                })
                 site_rmse = val_df.groupby('env')[['y_true', 'y_pred']].apply(
                     lambda g: root_mean_squared_error(g['y_true'], g['y_pred'])
                 )

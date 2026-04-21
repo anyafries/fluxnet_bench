@@ -3,9 +3,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from sklearn.preprocessing import RobustScaler
 from utils.utils import setup_logging, get_predictions_path, load_csv, save_csv
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 logger = setup_logging(__name__)
 
@@ -63,6 +62,8 @@ def load_data(path):
     """Load the data from the specified path."""
     # each file in this folder is a site, and we want to load them all and concatenate into one dataframe
     path = os.path.join(path, "sites")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Data path not found: {path}")
     dfs = []
     for filename in os.listdir(path):
         if filename.endswith(".csv"):
@@ -92,13 +93,15 @@ def get_data_split(
     remove_missing_target=False,
     keep_lonlat=False,
     astorch=False,
-    return_colnames=False
+    return_colnames=False,
+    standardize=False,
 ):
     """
     Get the train/test data for a specific setting.
     Args:
         df (pd.DataFrame): The input dataframe containing the data.
         setting (str): The cross-validation setting.
+        path (str): The path to the data directory (used for loading site lists).
         target (str, optional): The target variable name.
             Defaults to "GPP".
         remove_missing_target (bool, optional): Whether to remove rows with
@@ -107,12 +110,16 @@ def get_data_split(
             features. Defaults to False.
         astorch (bool, optional): Whether to return data as PyTorch tensors.
             Defaults to False.
+        return_colnames (bool, optional): Whether to return column names of
+            features. Defaults to False.
+        standardize (bool, optional): Whether to standardize features using
+            training set statistics. Defaults to False.
     Returns:
         tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
     """
     # Subset the correct data
-    if setting == "time-split":
-        sites_to_keep = pd.read_csv(os.path.join(BASE_DIR, "data/sites_with_2018.csv"))
+    if setting in ["time-split", "time-space"]:
+        sites_to_keep = pd.read_csv(os.path.join(path, "sites_with_2018.csv"))
         df_out = df.loc[df["site_id"].isin(sites_to_keep['site_id'].values)].copy()
     else: # setting in ["spatial-easy", "spatial-hard"]:
         df_out = df.copy()
@@ -137,6 +144,27 @@ def get_data_split(
         train = df_out.loc[df_out["year"] < 2018].copy()
         val = df_out.loc[df_out["year"] == 2018].copy()
         test = df_out.loc[df_out["year"] > 2018].copy()
+
+    elif setting == "time-space":
+        # 1. Define site groups based on "hard-1"
+        test_group = ['AU-Rgf', 'AU-War', 'BR-Npw', 'CA-Cbo', 'DK-Vng', 'FR-Gri', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-Lav', 'IT-TrF', 'US-A32', 'US-ARM', 'US-Bi1', 'US-Bi2', 'US-DFC', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-Tw4']
+        
+        all_sites = df_out["site_id"].unique().tolist()
+        remaining_sites = [site for site in all_sites if site not in test_group]
+        
+        np.random.seed(42)
+        np.random.shuffle(remaining_sites)
+        val_group = remaining_sites[:25]
+        
+        # 2. Split by both time AND space
+        df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
+        train = df_out.loc[(df_out["year"] < 2018) & (~df_out["site_id"].isin(test_group + val_group))].copy()
+        val = df_out.loc[(df_out["year"] == 2018) & (df_out["site_id"].isin(val_group))].copy()
+        test = df_out.loc[(df_out["year"] > 2018) & (df_out["site_id"].isin(test_group))].copy()
+        
+        if test.shape[0] == 0:
+            raise ValueError("No test data for time-space setting")
+        
     else:
         # get held-out group
         if setting == "spatial-easy":
@@ -183,6 +211,22 @@ def get_data_split(
             elif setting == "rest-of-world":
                 rest = ['AU', 'AR', 'CL', 'IL', 'JP', 'BR'] + ['CA']
                 test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in rest]
+            elif setting[:4] == "hard":
+                if setting == "hard-1":
+                    # highest RMSE (avg ranking across targets) 
+                    test_group = ['AU-Rgf', 'AU-War', 'BR-Npw', 'CA-Cbo', 'DK-Vng', 'FR-Gri', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-Lav', 'IT-TrF', 'US-A32', 'US-ARM', 'US-Bi1', 'US-Bi2', 'US-DFC', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-Tw4']
+                elif setting == "hard-2":
+                    # highest increase (avg ranking across targets) 
+                    test_group = ['AU-Rgf', 'BE-Lon', 'BE-Maa', 'CA-ER1', 'FR-Aur', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-MtP', 'US-A32', 'US-ARM', 'US-Bi2', 'US-DS3', 'US-Dmg', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-Ro1', 'US-Ro6', 'US-Sne', 'US-Snf', 'US-Tw1', 'US-Tw4']
+                elif setting == "hard-3":
+                    # highest % increase (avg ranking across targets) 
+                    test_group = ['AR-TF1', 'AU-ASM', 'AU-Lon', 'AU-Rgf', 'BE-Maa', 'CA-DB2', 'CA-DBB', 'CA-ER1', 'FI-Sii', 'FR-Aur', 'IL-Yat', 'IT-MtP', 'UK-AMo', 'US-A32', 'US-Bi2', 'US-DS3', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-Sne', 'US-Snf', 'US-Srr', 'US-Tw1', 'US-Tw4', 'US-xJR']
+                elif setting == "hard-4":
+                    # highest % increase (min rank)
+                    test_group = ['AR-TF1', 'AU-ASM', 'AU-Rgf', 'BE-Maa', 'CA-DBB', 'CA-SCB', 'FI-Sii', 'FR-FBn', 'IT-Cp2', 'SE-Lnn', 'UK-AMo', 'US-Bi2', 'US-DS3', 'US-ICh', 'US-Pnp', 'US-Ro1', 'US-Sne', 'US-Snf', 'US-Srr', 'US-StJ', 'US-Tw1', 'US-Tw4', 'US-Vcm', 'US-xHE', 'US-xSL']
+                elif setting == "hard-5":
+                    # hardest for ET
+                    test_group = ['AU-Lit', 'BR-Npw', 'FR-FBn', 'IT-BCi', 'IT-Cp2', 'IT-Ren', 'IT-TrF', 'US-DS3', 'US-Dmg', 'US-HB1', 'US-HB2', 'US-HB3', 'US-KFS', 'US-NC3', 'US-NC4', 'US-ORv', 'US-Pnp', 'US-RGA', 'US-RGB', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-StJ', 'US-Tw4']
             else:
                 raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
             
@@ -218,7 +262,7 @@ def get_data_split(
         f"Expected no missing values in features, but found {incomplete_train} in train and {incomplete_val} in val, and {incomplete_test} in test"
 
     # clean up
-    if setting == "time-split":
+    if setting in ["time-split", "time-space"]:
         env_col = "site_year"
     else:
         env_col = "site_id"
@@ -246,6 +290,12 @@ def get_data_split(
     xtrain, ytrain = train.values[:, xcols], train.values[:, ycol].ravel()
     xval, yval = val.values[:, xcols], val.values[:, ycol].ravel()
     xtest, ytest = test.values[:, xcols], test.values[:, ycol].ravel()
+
+    if standardize:
+        scaler = RobustScaler()
+        xtrain = scaler.fit_transform(xtrain)
+        xval = scaler.transform(xval)
+        xtest = scaler.transform(xtest)
 
     if astorch:
         xtrain = torch.tensor(xtrain, dtype=torch.float32)
@@ -294,7 +344,7 @@ def save_predictions(test, ypred, setting, target, model_name, val_strategy):
     # TODO: add mask?
     xtest, ytest, envs_test, sites_test, times_test = test
     predictions_df = pd.DataFrame({
-        'y_true': ytest,
+        'y_true': ytest.ravel(),
         'y_pred': ypred,
         'env': envs_test,
         'site_id': sites_test,

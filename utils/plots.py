@@ -16,10 +16,17 @@ PLOTS_DIR = 'results/plots'
 SCALES = ['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav']
 
 # Model ordering: lr first, xgb second, then alphabetically
-MODEL_ORDER = ['lr', 'xgb']
+MODEL_ORDER = ['lr', 'xgb', 'robust-lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd', 'maxrm_mse', 'maxrm_regret']
+color_palette = sns.color_palette("tab10", n_colors=len(MODEL_ORDER))
+MODEL_COLORS = {model: color_palette[i] for i, model in enumerate(MODEL_ORDER)}
 
 # Setting ordering: time-split, spatial-easy, spatial-hard
-SETTINGS_ORDER = ['time-split', 'spatial-easy', 'spatial-hard']
+SETTINGS_ORDER = ['time-split', 'spatial-easy', 'spatial-hard', 
+                  'LST', 'TA', 'VPD', 
+                  'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET', 
+                  'forest', 'grass-savanna', 'schrub-savanna',
+                  'europe', 'rest-of-world',
+                  ] + [f'hard-{i}' for i in range(1, 6)] + ['time-space']
 
 # Metrics where higher is better (affects sorting direction and labels)
 HIGHER_IS_BETTER = {'nse', 'r2_score', 'pearson_corr'}
@@ -70,15 +77,16 @@ def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', leg
         .reset_index()
     )
 
-    hue_order = get_ordered_models(data['model'].unique())
-    data['setting'] = pd.Categorical(data['setting'], categories=SETTINGS_ORDER, ordered=True)
+    # hue_order = get_ordered_models(data['model'].unique())
+    categories = SETTINGS_ORDER + [s for s in np.sort(data['setting'].unique()) if s not in SETTINGS_ORDER]
+    data['setting'] = pd.Categorical(data['setting'], categories=categories, ordered=True)
     data = data.sort_values('setting')
     for i, plot_func in enumerate([sns.lineplot, sns.scatterplot]):
         plot_func(data=data, x='setting', y=metric, ax=ax, hue='model',
-                  hue_order=hue_order, legend=legend&(i==1))
+                  palette=MODEL_COLORS, legend=legend&(i==1))
 
-    ax.set_xticks(range(len(SETTINGS_ORDER)))
-    ax.set_xticklabels(SETTINGS_ORDER)
+    ax.set_xticks(range(len(categories)))
+    ax.set_xticklabels(categories, rotation=90, ha='right') # Rotates labels 45 degrees
     ax.set_title(scale)
     ax.set_xlabel('')
 
@@ -96,7 +104,7 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
     """
     os.makedirs(outdir, exist_ok=True)
 
-    fig, axes = plt.subplots(4, 2, figsize=(6, 8))
+    fig, axes = plt.subplots(4, 2, figsize=(6, 8), sharex=True)
     axes = axes.flatten()
 
     for i, scale in enumerate(SCALES):
@@ -113,7 +121,7 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
     logger.info(f"Saved: {outfile}")
 
 
-def plot_cdf(results, target, metric, scale, setting, ax):
+def plot_cdf(results, target, metric, scale, setting, ax, xmax=None):
     """
     Plot CDF of metric for one target/scale/setting (single subplot).
 
@@ -151,7 +159,8 @@ def plot_cdf(results, target, metric, scale, setting, ax):
             # Sort ascending for lower-is-better metrics
             sorted_values = np.sort(values)
 
-        ax.plot(sorted_values, np.linspace(0, 1, len(sorted_values)), label=model_name)
+        ax.plot(sorted_values, np.linspace(0, 1, len(sorted_values)), 
+                label=model_name, color=MODEL_COLORS.get(model_name, 'gray'))
 
     ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
@@ -166,7 +175,7 @@ def plot_cdf(results, target, metric, scale, setting, ax):
     if metric.lower() == 'nse':
         ax.set_xlim(-0.5, 1.0)
     else:
-        ax.set_xlim(left=0)
+        ax.set_xlim(0, xmax)
 
     ax.set_title(setting)
     ax.legend()
@@ -213,7 +222,8 @@ def plot_quantile(results, target, metric, scale, setting, ax, y_limit=None):
             sorted_values = np.sort(values)
 
         percentiles = np.linspace(0, 1, len(sorted_values))
-        ax.plot(percentiles, sorted_values, label=model_name)
+        ax.plot(percentiles, sorted_values, label=model_name,
+                color=MODEL_COLORS.get(model_name, 'gray'))
 
     ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
@@ -259,13 +269,19 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
         return
 
     n_settings = len(settings)
-    fig, axes = plt.subplots(1, n_settings, figsize=(4 * n_settings, 4), sharey=True)
+    fig, axes = plt.subplots(1, n_settings, figsize=(4 * n_settings, 4), 
+                             sharey=True, sharex=True)
 
     if n_settings == 1:
         axes = [axes]
 
+    xmax = results[
+        (results['target'] == target) &
+        (results['scale'] == scale)
+    ][metric].max()
+
     for i, setting in enumerate(settings):
-        plot_cdf(results, target, metric, scale, setting, axes[i])
+        plot_cdf(results, target, metric, scale, setting, axes[i], xmax=xmax)
 
     fig.suptitle(f"{target} ({scale})")
     plt.tight_layout()
