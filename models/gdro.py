@@ -48,6 +48,7 @@ class GroupDRO:
         self.group_weight_step = group_weight_step
         self.early_stopping_rounds = early_stopping_rounds
         self.model = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def _build_model(self, input_dim):
         """Build the neural network architecture."""
@@ -80,6 +81,7 @@ class GroupDRO:
             raise ValueError("GroupDRO requires environment labels (envs)")
 
         self.model = self._build_model(X.shape[1])
+        self.model.to(self.device)
 
         # Map environment labels to integer indices
         unique_envs = np.unique(envs)
@@ -94,12 +96,14 @@ class GroupDRO:
 
         # Initialize optimizer and group weights
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        group_weights = torch.ones(n_groups) / n_groups
+        group_weights = torch.ones(n_groups, device=self.device) / n_groups
 
         use_val = eval_set is not None
         if use_val:
-            X_val_t = torch.tensor(eval_set[0][0], dtype=torch.float32)
-            y_val_t = torch.tensor(eval_set[0][1], dtype=torch.float32).view(-1, 1)
+            assert isinstance(eval_set[0][0], torch.Tensor), "Validation X must be a torch.Tensor"
+            assert isinstance(eval_set[0][1], torch.Tensor), "Validation y must be a torch.Tensor"
+            X_val_t = eval_set[0][0].to(self.device)
+            y_val_t = eval_set[0][1].to(self.device)
             best_val_loss = float('inf')
             best_weights = None
             rounds_without_improvement = 0
@@ -108,6 +112,10 @@ class GroupDRO:
         for _ in pbar:
             self.model.train()
             for X_batch, y_batch, env_batch in loader:
+                X_batch = X_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
+                env_batch = env_batch.to(self.device)
+
                 optimizer.zero_grad()
                 pred = self.model(X_batch)
 
@@ -115,8 +123,8 @@ class GroupDRO:
                 sample_losses = F.mse_loss(pred, y_batch, reduction='none').squeeze()
 
                 # Compute per-group average loss
-                group_losses = torch.zeros(n_groups)
-                group_counts = torch.zeros(n_groups)
+                group_losses = torch.zeros(n_groups, device=self.device)
+                group_counts = torch.zeros(n_groups, device=self.device)
                 for g in range(n_groups):
                     mask = (env_batch == g)
                     if mask.sum() > 0:
@@ -157,17 +165,12 @@ class GroupDRO:
 
         return self
 
+    
     def predict(self, X):
-        """
-        Make predictions.
-
-        Args:
-            X: Features array of shape (n_samples, n_features)
-
-        Returns:
-            Predictions array of shape (n_samples,)
-        """
         self.model.eval()
         with torch.no_grad():
-            X_t = torch.tensor(X, dtype=torch.float32)
-            return self.model(X_t).numpy().ravel()
+            # Move to device
+            X_t = torch.tensor(X, dtype=torch.float32).to(self.device)
+            
+            # Predict, move to CPU, make numpy, and flatten
+            return self.model(X_t).cpu().numpy().ravel()
