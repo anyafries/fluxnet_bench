@@ -14,11 +14,21 @@ Available models:
 """
 
 import itertools
+import json
+import numpy as np
+import os
+import random
 
-from utils.utils import setup_logging
+from utils.utils import setup_logging, get_params_path
 
+np.random.seed(42)
+random.seed(42)
 logger = setup_logging(__name__)
 
+
+# ------------------------------------------------------------------------
+# Loading models by name
+# ------------------------------------------------------------------------
 
 def get_model(model_name, params=None):
     """
@@ -84,137 +94,98 @@ def get_model(model_name, params=None):
         )
 
 
-# def get_default_params(model_name):
-#     """
-#     Returns default parameters for the specified model.
+# ------------------------------------------------------------------------
+# Hyperparameter grids for each model
+# ------------------------------------------------------------------------
 
-#     Args:
-#         model_name (str): The name of the model.
-
-#     Returns:
-#         dict: Default parameters for the model
-#     """
-#     params = {}
-#     if model_name == 'xgb':
-#         params = {
-#             'objective': 'reg:squarederror',
-#             'n_estimators': 100,
-#             'max_depth': 5,
-#             'learning_rate': 0.1,
-#             'early_stopping_rounds': 10,
-#         }
-#     elif model_name in ['maxrm_mse', 'maxrm_regret']:
-#         params = {
-#             'n_estimators': 100,
-#             'min_samples_leaf': 30,
-#         }
-#     elif model_name == 'mlp':
-#         params = {
-#             'hidden_dims': [128, 64],
-#             'dropout': 0.1,
-#             'lr': 1e-3,
-#             'n_epochs': 500,
-#             'batch_size': 256,
-#             'early_stopping_rounds': 10,
-#         }
-#     elif model_name == 'gdro':
-#         params = {
-#             'hidden_dims': [128, 64],
-#             'dropout': 0.1,
-#             'lr': 1e-3,
-#             'n_epochs': 100,
-#             'batch_size': 256,
-#             'group_weight_step': 0.01,
-#             'early_stopping_rounds': 10,
-#         }
-#     elif model_name == 'coral':
-#         params = {
-#             'hidden_dims': [128, 64],
-#             'dropout': 0.1,
-#             'lr': 1e-3,
-#             'n_epochs': 500,
-#             'batch_size': 1024,
-#             'early_stopping_rounds': 10,
-#             'coral_lambda': 1.0,
-#             'num_coral_pairs': 10
-#         }
-#     elif model_name == 'mmd':
-#         params = {
-#             'hidden_dims': [128, 64],
-#             'dropout': 0.1,
-#             'lr': 1e-3,
-#             'n_epochs': 500,
-#             'batch_size': 1024,
-#             'early_stopping_rounds': 10,
-#             'mmd_gamma': 1.0,
-#             'num_mmd_pairs': 5,
-#         }
-#     return params
+def sample_log_uniform(low, high):
+    """Best practice for LR and Alpha: samples across orders of magnitude."""
+    return float(10 ** np.random.uniform(np.log10(low), np.log10(high)))
 
 
-def get_param_grid(model_name):
+def load_best_mlp_params(setting, target, val_strategy):
+    """Helper to fetch the best MLP parameters already saved."""
+    path = get_params_path(setting, target, 'mlp', val_strategy)
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            return json.load(f)
+    return None
+
+
+def get_random_params(model_name, n_iter=10, setting=None, target=None):
     """
-    Returns a list of parameter dictionaries to test for a model.
-    Aims for 2-4 variations per model to keep benchmarks manageable.
-    """
-    grid = []
+    Generates N random parameter sets for a given model.
     
+    Args:
+        model_name (str): The model identifier.
+        n_iter (int): Number of random configurations to generate.
+        setting (str): Current setting (used for inheriting MLP params).
+        target (str): Current target (used for inheriting MLP params).
+    """
     if model_name == 'lr':
-        grid = [{}]
+        return [{}] * n_iter
+    
+    best_mlp = None
+    if model_name in ['gdro', 'coral', 'mmd']:
+        if setting is not None and target is not None:
+            best_mlp = load_best_mlp_params(setting, target, 
+                                            val_strategy='mean')
+            if best_mlp:
+                logger.info(f"Inheriting MLP params for {model_name}: {best_mlp.get('hidden_dims')}")
 
-    elif model_name == 'ridge':
-        options = {
-            'alpha': [0.1, 1.0, 10.0]
-        }
-        keys, values = zip(*options.items())
-        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    random_configs = []
+    for _ in range(n_iter):
+        params = {}
 
-    elif model_name == 'robust-lr':
-        options = {
-            'alpha': [0.1, 1.0, 10.0],
-            'epsilon': [1.35, 1.5]
-        }
-        keys, values = zip(*options.items())
-        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        if model_name == 'ridge':
+            params = {
+                'alpha': sample_log_uniform(1e-3, 1e2)
+            }
 
-    elif model_name in ['maxrm_mse', 'maxrm_regret']:
-        options = {
-            'n_estimators': [100, 500],
-            'min_samples_leaf': [10, 30],
-        }
-        keys, values = zip(*options.items())
-        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        elif model_name == 'robust-lr':
+            params = {
+                'alpha': sample_log_uniform(1e-3, 1e2),
+                'epsilon': np.random.uniform(1.1, 2.0)
+            }
 
-    elif model_name == 'xgb':
-        # Focus on depth and shrinkage
-        options = {
-            'n_estimators': [100, 500],
-            'max_depth': [3, 6],
-            'learning_rate': [0.05, 0.1],
-            'objective': ['reg:squarederror'],
-            'early_stopping_rounds': [10]
-        }
-        keys, values = zip(*options.items())
-        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        elif model_name in ['maxrm_mse', 'maxrm_regret']:
+            params = {
+                'n_estimators': random.choice([100, 200, 500, 1000]),
+                'min_samples_leaf': random.randint(5, 50),
+            }
 
-    elif model_name in ['mlp', 'gdro', 'coral', 'mmd']:
-        # Base deep learning params
-        base_options = {
-            'hidden_dims': [[128, 64], [256, 128]],
-            'lr': [1e-3, 1e-4],
-            'n_epochs': [100],
-            'batch_size': [1024, 2048]
-        }
-        
-        # Add model-specific hyperparams
-        if model_name == 'gdro':
-            base_options['group_weight_step'] = [0.01, 0.1]
-        elif model_name == 'coral':
-            base_options['coral_lambda'] = [0.1, 1.0]
-        elif model_name == 'mmd':
-            base_options['mmd_gamma'] = [0.1, 1.0]
+        elif model_name == 'xgb':
+            params = {
+                'n_estimators': random.randint(100, 1000),
+                'max_depth': random.randint(3, 10),
+                'learning_rate': sample_log_uniform(0.01, 0.3),
+                'subsample': np.random.uniform(0.6, 1.0),
+                'objective': 'reg:squarederror',
+                'early_stopping_rounds': 10
+            }
+
+        elif model_name in ['mlp', 'gdro', 'coral', 'mmd']:
+            # Pre-load MLP best params for derivative models
+            if best_mlp and model_name != 'mlp':
+                params = best_mlp.copy()
+            else:
+                # Base deep learning params
+                params = {
+                    'hidden_dims': random.choice([[128, 64], [256, 128], [512, 256, 128]]),
+                    'lr': sample_log_uniform(1e-5, 1e-2),
+                    'dropout': np.random.uniform(0.0, 0.5),
+                    'n_epochs': 100,
+                    'batch_size': random.choice([512, 1024, 2048])
+                }
             
-        keys, values = zip(*options.items() if 'options' in locals() else base_options.items())
-        grid = [dict(zip(keys, v)) for v in itertools.product(*values)]
+            # Model-specific logic
+            if model_name == 'gdro':
+                params['group_weight_step'] = sample_log_uniform(1e-4, 1e-1)
+            elif model_name == 'coral':
+                params['coral_lambda'] = sample_log_uniform(1e-2, 1e1)
+            elif model_name == 'mmd':
+                params['mmd_gamma'] = sample_log_uniform(1e-2, 1e1)
 
-    return grid
+        random_configs.append(params)
+
+    return random_configs

@@ -5,7 +5,7 @@ import pandas as pd
 from sklearn.metrics import root_mean_squared_error
 
 from dataloader import load_data, get_data_split, save_predictions
-from models import get_model, get_param_grid
+from models import get_model, get_random_params
 from tests.test_models import test_model
 from utils.eval_utils import compute_and_save_metrics, save_best_params
 from utils.utils import setup_logging, get_metrics_path
@@ -49,9 +49,6 @@ if __name__ == "__main__":
     logger.info(f"Loading data from {args.path}...")
     df = load_data(args.path)
 
-    # get param grid for the model
-    param_grid = get_param_grid(model_name)
-
     # Run experiments
     for setting in settings:
         for target in targets:
@@ -62,6 +59,8 @@ if __name__ == "__main__":
             ):
                 logger.info(f"Results for {setting}/{target}/{model_name} already exist. Use --rerun to rerun.")
                 continue
+
+            param_grid = get_random_params(model_name, setting=setting, target=target)
 
             best = {s: {'score': float('inf'), 'params': None, 'model': None}
                     for s in ['mean', 'max', 'discrepancy']}
@@ -83,7 +82,7 @@ if __name__ == "__main__":
             xval, yval, envs_val = val
             xtest = test[0]
 
-            logger.info(f"Starting Grid Search for {model_name} on {setting}-{target}...")
+            logger.info(f"Starting random search for {model_name} on {setting}-{target}...")
 
             # Hyperparameter tuning loop
             for i, params in enumerate(param_grid):
