@@ -4,7 +4,7 @@ import logging
 import os
 import pandas as pd
 
-RESULTS_DIR = 'results'
+RESULTS_DIR = '/r/scratch/users/anfries/fluxnet_data/results'
 
 def setup_logging(name=None):
     """
