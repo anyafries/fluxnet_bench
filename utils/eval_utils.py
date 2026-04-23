@@ -33,8 +33,16 @@ def mse(ytrue, ypred):
 
 
 def mae(ytrue, ypred):
-    """Mean Absolute Error (MAD in QuickEval)."""
+    """Mean Absolute Error."""
     return np.nanmean(np.abs(ypred - ytrue))
+
+
+def relative_mae(ytrue, ypred):
+    """Relative MAE: mae / mean(obs)."""
+    mask = np.isfinite(ytrue) & np.isfinite(ypred)
+    if mask.sum() == 0:
+        return np.nan
+    return np.nanmean(np.abs(ypred[mask] - ytrue[mask])) / np.nanmean(np.abs(ytrue[mask]))
 
 
 def bias(ytrue, ypred):
@@ -90,6 +98,7 @@ DEFAULT_METRICS = {
     'nse': nse,
     'r2_score': r2_score,
     'bias': bias,
+    'relative_mae': relative_mae,
 }
 
 # -----------------------------------------------------------------------
