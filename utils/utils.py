@@ -4,7 +4,13 @@ import logging
 import os
 import pandas as pd
 
-RESULTS_DIR = 'results'
+# __file__ is the path to utils.py
+# os.path.dirname(__file__) is the utils/ folder
+# os.path.dirname(os.path.dirname(__file__)) is your main benchmark folder!
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Now define your results directory absolutely
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
 
 def setup_logging(name=None):
     """
