@@ -19,7 +19,7 @@ ALL_SETTINGS = [
     'forest', 'schrub-savanna', 'grass-savanna',
     'TA', 'VPD', 'LST', 'europe', 'rest-of-world',
 ] + [f'hard-{i}' for i in range(1, 6)]
-ALL_TARGETS = ['GPP', 'NEE', 'ET']
+ALL_TARGETS = ['ET', 'GPP', 'NEE']
 
 
 if __name__ == "__main__":
@@ -50,8 +50,8 @@ if __name__ == "__main__":
     df = load_data(args.path)
 
     # Run experiments
-    for setting in settings:
-        for target in targets:
+    for target in targets:
+        for setting in settings:
             logger.info(f"Running experiment: setting={setting}, target={target}, model={model_name}")
             if not args.rerun and all(
                 os.path.exists(get_metrics_path(setting, target, model_name, s))
