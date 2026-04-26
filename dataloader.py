@@ -184,7 +184,10 @@ def get_data_split(
             test_group = site_ids[:25]
             val_group = site_ids[25:50]
         else:
-            if setting in ["PFT_CRO", "PFT_ENF", "PFT_GRA", "PFT_WET"]:
+            if setting == 'spatial-easy40':
+                # G1 and G2 and 3 extra (to make 40)
+                test_group = ['US-Tw1', 'DE-Hai', 'US-Seg', 'US-Sne', 'US-Tw4', 'US-xDL', 'UK-AMo', 'AU-Dry', 'US-CGG', 'FR-Bil', 'US-Rpf', 'DK-Skj', 'RU-Fy2', 'DE-Rns', 'US-Tw3', 'RU-Fyo', 'US-Snf', 'CH-Cha', 'AR-CCg', 'CL-SDF', 'DE-Gri', 'FR-Tou', 'AU-Whr', 'AU-GWW', 'US-RGo', 'IT-BCi', 'ES-Abr', 'SE-Nor', 'DE-Hzd', 'US-CS2', 'US-StJ', 'CA-TP3', 'BE-Dor', 'US-xWD', 'US-Syv', 'DE-RuR', 'CZ-BK1', 'BE-Maa', 'BE-Vie', 'FI-Var']
+            elif setting in ["PFT_CRO", "PFT_ENF", "PFT_GRA", "PFT_WET"]:
                 test_group = df_out.loc[df_out[setting] == 1, "site_id"].unique().tolist()
             elif setting == "forest":
                 forest_columns = ["PFT_DBF", "PFT_DNF", "PFT_EBF"]
@@ -197,10 +200,14 @@ def get_data_split(
                 test_group = df_out.loc[df_out[grass_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
             elif setting == 'TA':
                 test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst']
+            elif setting == 'TA40':
+                test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst', 'US-Wkg', 'IT-BCi', 'US-Jo2', 'IT-Cp2', 'US-RGo', 'ES-Abr', 'US-NC4', 'ES-Agu', 'US-Akn', 'US-xJR', 'ES-Pdu', 'US-Ton', 'ES-LM2', 'IT-Noe', 'ES-LM1']
             elif setting == "VPD":
                 test_group = ['AU-ASM', 'AU-Lon', 'AU-Dry', 'US-SRM', 'US-SRG', 'US-Jo2', 'AU-DaS', 'US-xJR', 'US-SRS', 'US-Whs', 'US-Wkg', 'AU-GWW', 'AU-Cpr', 'US-Ses', 'US-CdM', 'US-Seg', 'US-Ton', 'US-RGo', 'AU-Lit', 'IL-Yat', 'ES-Abr', 'ES-LM2', 'ES-LM1', 'US-CGG', 'US-Hn2']
             elif setting == "LST":
                 test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA']
+            elif setting == "LST40":
+                test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA', 'US-xDS', 'US-Ton', 'AU-Whr', 'ES-LM2', 'US-Bi2', 'US-Dmg', 'ES-LM1', 'US-SP1', 'US-xCP', 'AU-Cum', 'US-ARM', 'US-RGo', 'US-xJE', 'ES-LJu', 'US-Srr']
             elif setting == "europe":
                 europe = [
                     'IT', 'DE', 'FR', 'ES', 'SE', 'CZ', 
@@ -234,7 +241,10 @@ def get_data_split(
             remaining_sites = [site for site in all_sites if site not in test_group]
             np.random.seed(42)
             np.random.shuffle(remaining_sites)
-            val_group = remaining_sites[:25]
+            if setting[-2:] == "40":
+                val_group = remaining_sites[:20]
+            else:
+                val_group = remaining_sites[:25]
         
 
         train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
