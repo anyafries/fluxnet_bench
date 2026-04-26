@@ -81,6 +81,65 @@ def load_data(path):
     return df
 
 
+# -------------------------------------------------------------------------
+# ------------------ helpers for the overlap experiments ------------------
+# -------------------------------------------------------------------------
+
+def get_ta_overlap_site_groups(df_out, regime, val_size=30):
+    """
+    Deterministic TA-overlap split.
+
+    Idea:
+    - Fix a hot test set (top-60 TA sites → every 2nd site = 30 test sites)
+    - Replace nearby "hot neighbours" (S1) with cold sites (S2)
+    - Control overlap via k ∈ {30,20,10,0}
+
+    Regimes:
+        k = 30 → full overlap (all hot neighbours included)
+        k = 0  → strong gap (only cold sites instead of neighbours)
+    """
+
+    # Parse regime (e.g. "TA-overlap-20" → k=20)
+    k = int(str(regime).split("-")[-1])
+    assert k in {30, 20, 10, 0}, f"Invalid TA-overlap regime: {regime}"
+
+    # Rank sites by mean TA
+    site_ta = df_out.groupby("site_id")["TA"].mean().sort_values(ascending=False)
+    sites = site_ta.index.tolist()
+
+    # Define base partitions (X = hottest 60, Y = rest)
+    hottest, remaining = sites[:60], sites[60:]
+
+    # TEST: every second site from X, S1: remaining hot sites
+    test_group = hottest[::2]
+    hot_set = hottest[1::2]
+
+    # S2: 30 coldest sites (used to replace S1 progressively)
+    cold_set = remaining[-30:]
+
+    # VAL: randomly sample from remaining sites (excluding the coldest 30 reserved for S2)
+    np.random.seed(42)
+    val_candidates = remaining[:-30]
+    val_group = np.random.choice(val_candidates, size=val_size, replace=False).tolist()
+
+    # T: all remaining sites (always included in training)
+    remaining = set(sites) - set(test_group) - set(val_group)
+
+    # assert that hot_set and cold_set are ordered by TA
+    assert site_ta[hot_set].is_monotonic_decreasing, "Hot neighbours not ordered by TA"
+    assert site_ta[cold_set].is_monotonic_decreasing, "Cold sites not ordered by TA"
+
+    # Train: Keep k closest hot neighbours, replace the rest with cold sites
+    train_group = hot_set[:k] + cold_set[:30-k] + list(remaining)
+
+    # Sanity checks: disjointness
+    assert not (set(train_group) & set(val_group))
+    assert not (set(train_group) & set(test_group))
+    assert not (set(val_group) & set(test_group))
+
+    return train_group, val_group, test_group
+
+
 # -----------------------------------------------------------------------
 # ------------------ Functions for getting fold data --------------------
 # -----------------------------------------------------------------------
@@ -183,6 +242,9 @@ def get_data_split(
             np.random.shuffle(site_ids)
             test_group = site_ids[:25]
             val_group = site_ids[25:50]
+        elif setting.startswith("TA-overlap"):
+            train_group, val_group, test_group = get_ta_overlap_site_groups(
+                df_out, setting, val_size=30)
         else:
             if setting == 'spatial-easy40':
                 # G1 and G2 and 3 extra (to make 40)
@@ -246,10 +308,14 @@ def get_data_split(
             else:
                 val_group = remaining_sites[:25]
         
-
-        train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
         val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
         test = df_out.loc[df_out["site_id"].isin(test_group)].copy()
+        if setting.startswith("TA-overlap"):
+            # For TA-overlap, we have a predefined train group 
+            # it is *not* just the complement of test+val
+            train = df_out.loc[~df_out["site_id"].isin(train_group)].copy()
+        else:
+            train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
         if test.shape[0] == 0:
             logger.warning(f"* SKIPPING {test_group}: no test data")
             raise ValueError(f"No test data for group {test_group}")
