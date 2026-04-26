@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
 from utils.utils import setup_logging, get_predictions_path, load_csv, save_csv
 
@@ -154,6 +155,7 @@ def get_data_split(
     astorch=False,
     return_colnames=False,
     standardize=False,
+    validation_split='default',
 ):
     """
     Get the train/test data for a specific setting.
@@ -183,7 +185,7 @@ def get_data_split(
     else: # setting in ["spatial-easy", "spatial-hard"]:
         df_out = df.copy()
     # else:
-    #     raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
+    #     raise ValueError(f"Setting `{setting}` not recognized in get_data_split") 
 
     # Preserve time column if needed for metadata
     time_col = df_out["time"].copy()
@@ -198,6 +200,8 @@ def get_data_split(
 
     # split into train/test
     if setting == "time-split":
+        if validation_split != 'default':
+            raise NotImplementedError("Custom validation split not implemented for time-split setting")
         df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
         # split years chronologically
         train = df_out.loc[df_out["year"] < 2018].copy()
@@ -205,6 +209,8 @@ def get_data_split(
         test = df_out.loc[df_out["year"] > 2018].copy()
 
     elif setting == "time-space":
+        if validation_split != 'default':
+            raise NotImplementedError("Custom validation split not implemented for time-space setting")
         # 1. Define site groups based on "hard-1"
         test_group = ['AU-Rgf', 'AU-War', 'BR-Npw', 'CA-Cbo', 'DK-Vng', 'FR-Gri', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-Lav', 'IT-TrF', 'US-A32', 'US-ARM', 'US-Bi1', 'US-Bi2', 'US-DFC', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-Tw4']
         
@@ -213,7 +219,7 @@ def get_data_split(
         
         np.random.seed(42)
         np.random.shuffle(remaining_sites)
-        val_group = remaining_sites[:25]
+        val_group = remaining_sites[:20]
         
         # 2. Split by both time AND space
         df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
@@ -225,16 +231,39 @@ def get_data_split(
             raise ValueError("No test data for time-space setting")
         
     else:
-        # get held-out group
         if setting == "spatial-easy":
-            test_group, val_group = G1, G2
+            test_group = G1
         elif setting == "spatial-hard":
             test_group = SOUTHERN_SITES
-            # for val group, we can use the sites that are in G1-G4 but not in the test group
-            val_group = [site for group in [G1, G2, G3, G4] 
-                         for site in group if site not in test_group][:25]
-            assert len(test_group) == len(val_group) == 25,\
-                f"Expected 25 sites in test and val groups, got {len(test_group)} and {len(val_group)}"
+        elif setting in ["PFT_CRO", "PFT_ENF", "PFT_GRA", "PFT_WET"]:
+            test_group = df_out.loc[df_out[setting] == 1, "site_id"].unique().tolist()
+        elif setting == "forest":
+            forest_columns = ["PFT_DBF", "PFT_DNF", "PFT_EBF"]
+            test_group = df_out.loc[df_out[forest_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
+        elif setting == "schrub-savanna":
+            shrub_savanna_columns = ["PFT_OSH", "PFT_SAV", "PFT_WSA"]
+            test_group = df_out.loc[df_out[shrub_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
+        elif setting == 'grass-savanna':
+            grass_savanna_columns = ["PFT_GRA", "PFT_SAV", "PFT_WSA"]
+            test_group = df_out.loc[df_out[grass_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
+        elif setting == 'TA':
+            test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst']
+        elif setting == "VPD":
+            test_group = ['AU-ASM', 'AU-Lon', 'AU-Dry', 'US-SRM', 'US-SRG', 'US-Jo2', 'AU-DaS', 'US-xJR', 'US-SRS', 'US-Whs', 'US-Wkg', 'AU-GWW', 'AU-Cpr', 'US-Ses', 'US-CdM', 'US-Seg', 'US-Ton', 'US-RGo', 'AU-Lit', 'IL-Yat', 'ES-Abr', 'ES-LM2', 'ES-LM1', 'US-CGG', 'US-Hn2']
+        elif setting == "LST":
+            test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA']
+        elif setting == "europe":
+            europe = [
+                'IT', 'DE', 'FR', 'ES', 'SE', 'CZ', 
+                'FI', 'BE', 'DK', 'RU', 'CH', 'IE', 
+                'NL', 'UK'
+            ]
+            test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in europe]
+        elif setting == "rest-of-world":
+            rest = ['AU', 'AR', 'CL', 'IL', 'JP', 'BR'] + ['CA']
+            test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in rest]
+            print(len(test_group))
+            raise
         elif setting[:6] == "random":
             seed = int(setting.split("-")[1]) if "-" in setting else 42
             np.random.seed(seed)
@@ -246,6 +275,7 @@ def get_data_split(
             train_group, val_group, test_group = get_ta_overlap_site_groups(
                 df_out, setting, val_size=30)
         else:
+            # randomly split remaining sites into train/val (20 val sites, rest train)
             if setting == 'spatial-easy40':
                 # G1 and G2 and 3 extra (to make 40)
                 test_group = ['US-Tw1', 'DE-Hai', 'US-Seg', 'US-Sne', 'US-Tw4', 'US-xDL', 'UK-AMo', 'AU-Dry', 'US-CGG', 'FR-Bil', 'US-Rpf', 'DK-Skj', 'RU-Fy2', 'DE-Rns', 'US-Tw3', 'RU-Fyo', 'US-Snf', 'CH-Cha', 'AR-CCg', 'CL-SDF', 'DE-Gri', 'FR-Tou', 'AU-Whr', 'AU-GWW', 'US-RGo', 'IT-BCi', 'ES-Abr', 'SE-Nor', 'DE-Hzd', 'US-CS2', 'US-StJ', 'CA-TP3', 'BE-Dor', 'US-xWD', 'US-Syv', 'DE-RuR', 'CZ-BK1', 'BE-Maa', 'BE-Vie', 'FI-Var']
@@ -303,19 +333,50 @@ def get_data_split(
             remaining_sites = [site for site in all_sites if site not in test_group]
             np.random.seed(42)
             np.random.shuffle(remaining_sites)
+
+        test = df_out.loc[df_out["site_id"].isin(test_group)].copy()
+
+        # get train, val depending on validation_split strategy
+        if validation_split == 'default':
             if setting[-2:] == "40":
                 val_group = remaining_sites[:20]
             else:
                 val_group = remaining_sites[:25]
+            val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
+            
+            if setting.startswith("TA-overlap"):
+                # For TA-overlap, we have a predefined train group 
+                # it is *not* just the complement of test+val
+                train = df_out.loc[~df_out["site_id"].isin(train_group)].copy()
+            else:
+                train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
+            
+        elif validation_split == 'iid':
+            # stratified random split of remaining sites into train/val
+            train_val_pool = df_out.loc[~df_out["site_id"].isin(test_group)].copy()
+            # Perform a stratified random split: every site is in both sets
+            train, val = train_test_split(
+                train_val_pool, 
+                test_size=1/8,
+                random_state=42,
+                stratify=train_val_pool['site_id']
+            )
+            
+        elif validation_split == 'temporal':
+            train = df_out.loc[(~df_out["site_id"].isin(test_group)) & (df_out["year"] < 2022)].copy()
+            val = df_out.loc[(~df_out["site_id"].isin(test_group)) & (df_out["year"] == 2022)].copy()
+
+        elif validation_split == 'oracle':
+            train = df_out.loc[~df_out["site_id"].isin(test_group)].copy()
+            test_pool = df_out.loc[df_out["site_id"].isin(test_group)].copy()
+            val, _ = train_test_split(
+                test_pool, 
+                train_size=0.10,     # Get 10% for validation
+                random_state=42,
+                stratify=test_pool['site_id']
+            )
+            test = df_out.loc[df_out["site_id"].isin(test_group)].drop(val.index).copy()
         
-        val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
-        test = df_out.loc[df_out["site_id"].isin(test_group)].copy()
-        if setting.startswith("TA-overlap"):
-            # For TA-overlap, we have a predefined train group 
-            # it is *not* just the complement of test+val
-            train = df_out.loc[~df_out["site_id"].isin(train_group)].copy()
-        else:
-            train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
         if test.shape[0] == 0:
             logger.warning(f"* SKIPPING {test_group}: no test data")
             raise ValueError(f"No test data for group {test_group}")
@@ -389,6 +450,7 @@ def get_data_split(
     if return_colnames:
         out = out + (train.columns[xcols].tolist(), train.columns[ycol].tolist()[0])
     return out
+
 
 # -----------------------------------------------------------------------
 # -------------------------- Predictions I/O ----------------------------

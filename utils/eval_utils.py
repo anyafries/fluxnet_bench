@@ -42,7 +42,10 @@ def relative_mae(ytrue, ypred):
     mask = np.isfinite(ytrue) & np.isfinite(ypred)
     if mask.sum() == 0:
         return np.nan
-    return np.nanmean(np.abs(ypred[mask] - ytrue[mask])) / np.nanmean(np.abs(ytrue[mask]))
+    mean_obs = np.nanmean(ytrue[mask])
+    if mean_obs == 0:
+        return np.nan
+    return np.nanmean(np.abs(ypred[mask] - ytrue[mask])) / mean_obs
 
 
 def bias(ytrue, ypred):
@@ -55,7 +58,10 @@ def relative_bias(ytrue, ypred):
     mask = np.isfinite(ytrue) & np.isfinite(ypred)
     if mask.sum() == 0:
         return np.nan
-    return np.nanmean(ytrue[mask] - ypred[mask]) / np.nanmean(ytrue[mask])
+    mean_obs = np.nanmean(ytrue[mask])
+    if mean_obs == 0:
+        return np.nan
+    return np.nanmean(ytrue[mask] - ypred[mask]) / mean_obs
 
 
 def nse(ytrue, ypred):
@@ -99,6 +105,7 @@ DEFAULT_METRICS = {
     'r2_score': r2_score,
     'bias': bias,
     'relative_mae': relative_mae,
+    'relative_bias': relative_bias
 }
 
 # -----------------------------------------------------------------------
@@ -134,134 +141,71 @@ def save_best_params(best_params, setting, target, model_name, val_strategy):
 # ----------------------- Metric Computation ----------------------------
 # -----------------------------------------------------------------------
 
-def compute_metrics_for_group(ytrue, ypred, metrics=None):
+def compute_metrics(predictions_df, model_name, setting, target, scales=None, metrics=None):
     """
-    Compute all metrics for a single group (e.g., one site).
-
-    Args:
-        ytrue: Array of true values
-        ypred: Array of predicted values
-        metrics: Dict of {name: function} for metrics to compute
-
-    Returns:
-        dict: Computed metric values
-    """
-    if metrics is None:
-        metrics = DEFAULT_METRICS
-
-    ytrue = np.asarray(ytrue)
-    ypred = np.asarray(ypred)
-
-    if all(np.isnan(ytrue)) or all(np.isnan(ypred)):
-        return {name: np.nan for name in metrics.keys()}
-
-    results = {}
-    for name, func in metrics.items():
-        try:
-            results[name] = func(ytrue, ypred)
-        except Exception:
-            results[name] = np.nan
-
-    return results
-
-
-def compute_diagnostics(df, scale='daily', metrics=None):
-    """
-    Compute metrics at a given temporal scale.
-
-    This is analogous to QuickEval's compute_diagnostics.
-    Data is first aggregated to the specified scale, then metrics
-    are computed per environment ('env').
-
-    Args:
-        df: DataFrame with y_true, y_pred, env, time columns
-        scale: Temporal scale ('daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav', 'spatial')
-        metrics: Dict of {name: function} for metrics to compute
-
-    Returns:
-        pd.DataFrame: One row per group with all metric columns
-    """
-    if metrics is None:
-        metrics = DEFAULT_METRICS
-
-    # Aggregate data to the specified scale
-    if scale in AGGREGATIONS:
-        agg_df = AGGREGATIONS[scale](df)
-    else:
-        raise ValueError(f"Unknown scale: {scale}. Available: {list(AGGREGATIONS.keys())}")
-
-    # For other scales, compute metrics per group
-    results = []
-    for group_val in agg_df['env'].unique():
-        mask = agg_df['env'] == group_val
-        group_df = agg_df[mask]
-
-        group_metrics = compute_metrics_for_group(
-            group_df['y_true'].values,
-            group_df['y_pred'].values,
-            metrics
-        )
-        group_metrics['env'] = group_val
-        group_metrics['n_samples'] = len(group_df)
-        results.append(group_metrics)
-
-    return pd.DataFrame(results)
-
-
-def compute_metrics(predictions_df, model_name, setting, target, scales=None):
-    """
-    Compute metrics at all temporal scales for an experiment.
-
-    Args:
-        predictions_df: DataFrame with y_true, y_pred, env, time columns
-        model_name: Model name for metadata
-        setting: Setting name for metadata
-        target: Target variable for metadata
-        scales: List of scales to compute (default: all available)
-
-    Returns:
-        pd.DataFrame with metrics for all scales combined
+    Compute metrics at all temporal scales and environments for an experiment.
     """
     if predictions_df is None:
         logger.warning("No predictions DataFrame provided, cannot compute metrics.")
         return None
     
-    if scales is None:
-        scales = list(AGGREGATIONS.keys())
-
-    MULTI_YEAR_SCALES = {'seasonal', 'iav', 'anom'}
-
+    scales = scales or list(AGGREGATIONS.keys())
+    metrics = metrics or DEFAULT_METRICS
+    multi_year_scales = {'seasonal', 'iav', 'anom'}
+    
     all_results = []
+
     for scale in scales:
         try:
-            if scale in MULTI_YEAR_SCALES and 'site_id' in predictions_df.columns:
-                df_for_scale = predictions_df.copy()
-                df_for_scale['env'] = df_for_scale['site_id']
-            else:
-                df_for_scale = predictions_df
-            results_df = compute_diagnostics(df_for_scale, scale=scale)
-            results_df['model'] = model_name
-            results_df['setting'] = setting
-            results_df['target'] = target
-            results_df['scale'] = scale
-            all_results.append(results_df)
-            n_samples = results_df['n_samples']
-            min_s, mean_s, max_s = n_samples.min(), n_samples.mean(), n_samples.max()
-            summary_log = f"Computed {scale} metrics: {len(results_df)} groups"
-            logger.info(summary_log+\
-                        f"{"\t" if len(summary_log) < 33 else ""}" +\
-                        f"\t(min samples: {min_s}, mean: {mean_s:.1f}, max: {max_s})")
+            # 1. Setup and Aggregate Data
+            df_scale = predictions_df.copy()
+            if scale in multi_year_scales and 'site_id' in df_scale.columns:
+                df_scale['env'] = df_scale['site_id']
+
+            if scale not in AGGREGATIONS:
+                raise ValueError(f"Unknown scale: {scale}. Available: {list(AGGREGATIONS.keys())}")
+                
+            agg_df = AGGREGATIONS[scale](df_scale)
+
+            # 2. Group by environment and compute metrics
+            scale_results = []
+            for env, group in agg_df.groupby('env'):
+                y_true, y_pred = group['y_true'].values, group['y_pred'].values
+                
+                # Base row with metadata
+                row = {
+                    'target': target, 'setting': setting, 'model': model_name,
+                    'scale': scale, 'env': env, 'n_samples': len(group)
+                }
+
+                # Compute scalar metrics
+                valid_data = not (np.all(np.isnan(y_true)) or np.all(np.isnan(y_pred)))
+                for name, func in metrics.items():
+                    try:
+                        row[name] = func(y_true, y_pred) if valid_data else np.nan
+                    except Exception:
+                        row[name] = np.nan
+                        
+                scale_results.append(row)
+            
+            all_results.extend(scale_results)
+
+            # 3. Logging for the current scale
+            if scale_results:
+                n_samples = [r['n_samples'] for r in scale_results]
+                summary_log = f"Computed {scale} metrics: {len(scale_results)} groups"
+                logger.info(summary_log + f"{"\t" if len(summary_log) < 33 else ""}" + 
+                            f"\t(min samples: {min(n_samples)}, mean: {np.mean(n_samples):.1f}, max: {max(n_samples)})")
+
         except Exception as e:
             logger.warning(f"Could not compute {scale} metrics: {e}")
 
     if not all_results:
         return None
 
-    combined = pd.concat(all_results, ignore_index=True)
-
-    # Reorder columns for readability
+    # 4. Format and return DataFrame
+    combined = pd.DataFrame(all_results)
     leading_cols = ['target', 'setting', 'model', 'scale', 'env', 'n_samples']
     other_cols = [c for c in combined.columns if c not in leading_cols]
-    combined = combined[[c for c in leading_cols if c in combined.columns] + other_cols]
-
-    return combined
+    
+    return combined[[c for c in leading_cols if c in combined.columns] + other_cols]

@@ -24,7 +24,8 @@ ALL_TARGETS = ['ET', 'GPP', 'NEE']
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str, default='/r/scratch/users/anfries/fluxnet_data',
+    parser.add_argument("--path", type=str,
+                        default='/Users/anfries/Documents/fluxnet_bench/data', #/r/scratch/users/anfries/fluxnet_data
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
@@ -60,15 +61,6 @@ if __name__ == "__main__":
                 logger.info(f"Results for {setting}/{target}/{model_name} already exist. Use --rerun to rerun.")
                 continue
 
-            param_grid = get_random_params(model_name, setting=setting, target=target)
-
-            best = {s: {'score': float('inf'), 'params': None, 'model': None}
-                    for s in ['mean', 'max', 'discrepancy']}
-
-            # TODO[LATER]: this function will change depending on how we store the data, and the preprocessing we do before
-            #       -> NB: before replacing, make sure to do all the data checks this function does
-            # train, val, xtest = get_data_split(
-            # Load data once per setting/target
             train, val, test = get_data_split(
                 df,
                 setting,
@@ -82,9 +74,12 @@ if __name__ == "__main__":
             xval, yval, envs_val = val
             xtest = test[0]
 
-            logger.info(f"Starting random search for {model_name} on {setting}-{target}...")
-
             # Hyperparameter tuning loop
+            logger.info(f"Starting random search for {model_name} on {setting}-{target}...")
+            param_grid = get_random_params(model_name, setting=setting, target=target)
+            best = {s: {'score': float('inf'), 'params': None, 'model': None}
+                    for s in ['mean', 'max', 'discrepancy']}
+            
             for i, params in enumerate(param_grid):
                 # Get model and train
                 model = get_model(model_name, params)
