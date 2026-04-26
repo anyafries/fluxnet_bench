@@ -12,7 +12,7 @@ import pandas as pd
 
 from dataloader import load_predictions
 from utils.eval_utils import load_metrics, compute_and_save_metrics
-from utils.plots import plot_metric_grid, plot_cdf_grid, create_leaderboard
+from utils.plots import plot_metric_grid, plot_cdf_grid, create_leaderboard, create_latex_leaderboard
 from utils.utils import setup_logging, find_available_experiments
 
 logger = setup_logging(__name__)
@@ -99,6 +99,8 @@ if __name__ == "__main__":
     parser.add_argument("--val_strategy", type=str,
                         choices=['mean', 'max', 'discrepancy'], default='mean',
                         help="Validation strategy to load results for (default: mean)")
+    parser.add_argument("--metric", type=str, default='rmse',
+                        help="Metric to plot (default: rmse)")
 
     args = parser.parse_args()
 
@@ -107,7 +109,9 @@ if __name__ == "__main__":
     targets = [args.target] if args.target else None
     models = [args.model] if args.model else None
     scales = [args.scale] if args.scale else None
-
+    scale_order = [s for s in ['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'] if s in scales]
+    metric = args.metric
+    
     # Load results
     results = load_all_metrics(
         settings=settings,
@@ -122,12 +126,18 @@ if __name__ == "__main__":
     print(results.tail())
 
     # Generate plots for all targets
+    # plots_dir = f'/Users/anfries/Documents/fluxnet_bench/results/plots/{args.val_strategy}'        
     plots_dir = f'/r/scratch/users/anfries/fluxnet_data/results/plots/{args.val_strategy}'
     for target in results['target'].unique():
-        plot_metric_grid(results, target, outdir=plots_dir)
-        plot_metric_grid(results, target, agg='max', outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='hourly', metric='rmse', outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='daily', metric='rmse', outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='weekly', metric='rmse', outdir=plots_dir)
+        plot_metric_grid(results, target, metric=metric, outdir=plots_dir)
+        plot_metric_grid(results, target, 
+                        agg=lambda x: x.quantile(0.9),
+                        outdir=plots_dir, metric=metric)
+        plot_cdf_grid(results, target, scale='hourly', metric=metric, outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='daily', metric=metric, outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='weekly', metric=metric, outdir=plots_dir)
         create_leaderboard(results, target, metric='rmse',
                            filename=f'{plots_dir}/medals_{target}.html')
+        create_leaderboard(results, target, metric='rmse', 
+                           agg=lambda x: x.quantile(0.9),
+                           filename=f'{plots_dir}/medals_max_{target}.html')
