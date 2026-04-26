@@ -59,9 +59,17 @@ def get_model(model_name, params=None):
         from sklearn.linear_model import HuberRegressor
         return HuberRegressor(**params)
     
+    elif model_name == 'constant':
+        from sklearn.dummy import DummyRegressor
+        return DummyRegressor(strategy='mean')
+    
     elif model_name == 'ridge':
         from sklearn.linear_model import Ridge
         return Ridge(**params)
+
+    elif model_name == 'lightgbm':
+        from lightgbm import LGBMRegressor
+        return LGBMRegressor(**params)
     
     elif model_name == 'mlp':
         from .mlp import MLP
@@ -122,8 +130,8 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
         setting (str): Current setting (used for inheriting MLP params).
         target (str): Current target (used for inheriting MLP params).
     """
-    if model_name == 'lr':
-        return [{}]
+    if model_name in ['lr', 'constant']:
+        return [{}] 
     
     best_mlp = None
     if model_name in ['gdro', 'coral', 'mmd']:
@@ -132,6 +140,7 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
                                             val_strategy='mean')
             if best_mlp:
                 logger.info(f"Inheriting MLP params for {model_name}: {best_mlp.get('hidden_dims')}")
+                n_iter = max(1, n_iter // 2)  # Reduce iterations since we're inheriting MLP params
 
     random_configs = []
     for _ in range(n_iter):
@@ -161,7 +170,29 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
                 'learning_rate': sample_log_uniform(0.01, 0.3),
                 'subsample': np.random.uniform(0.6, 1.0),
                 'objective': 'reg:squarederror',
-                'early_stopping_rounds': 10
+                'early_stopping_rounds': 10,
+                'n_jobs': 4,
+                'random_state': 42,
+            }
+
+        elif model_name == 'lightgbm':
+            max_depth = random.randint(3, 12)
+            # num_leaves should be less than 2^max_depth
+            max_leaves = max(min(65, 2**max_depth - 1), 15)
+            
+            params = {
+                'n_estimators': random.randint(100, 500),
+                'learning_rate': sample_log_uniform(0.05, 0.2),
+                'num_leaves': random.randint(15, max_leaves),
+                'max_depth': max_depth,
+                'min_child_samples': random.randint(5, 30),
+                # 'subsample': np.random.uniform(0.6, 1.0),
+                'colsample_bytree': np.random.uniform(0.6, 1.0),
+                'objective': 'regression',
+                'random_state': 42,
+                'verbosity': -1,
+                'n_jobs': 4,
+                'boosting_type': 'goss',
             }
 
         elif model_name in ['mlp', 'gdro', 'coral', 'mmd']:

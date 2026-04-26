@@ -16,7 +16,10 @@ PLOTS_DIR = 'results/plots'
 SCALES = ['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav']
 
 # Model ordering: lr first, xgb second, then alphabetically
-MODEL_ORDER = ['lr', 'xgb', 'robust-lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd', 'maxrm_mse', 'maxrm_regret']
+MODEL_ORDER = ['xgb', 'lightgbm', 'mlp', 
+               'gdro', 'coral', 'mmd', 
+            #    'maxrm_mse', 'maxrm_regret', 
+               'lr', 'robust-lr', 'ridge',  'constant']
 color_palette = sns.color_palette("tab10", n_colors=len(MODEL_ORDER))
 MODEL_COLORS = {model: color_palette[i] for i, model in enumerate(MODEL_ORDER)}
 
@@ -53,7 +56,8 @@ def is_higher_better(metric):
     return metric.lower() in HIGHER_IS_BETTER
 
 
-def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', legend=False):
+def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', 
+                           legend=False, ymax=None):
     """
     Plot metric across settings for one scale (single subplot).
 
@@ -86,9 +90,12 @@ def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', leg
                   palette=MODEL_COLORS, legend=legend&(i==1))
 
     ax.set_xticks(range(len(categories)))
-    ax.set_xticklabels(categories, rotation=90, ha='right') # Rotates labels 45 degrees
+    ax.set_xticklabels(categories, rotation=90, ha='center')
     ax.set_title(scale)
     ax.set_xlabel('')
+    ax.set_ylim(bottom=0)
+    if ymax is not None:
+        ax.set_ylim(top=ymax)
 
 
 def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_DIR):
@@ -104,17 +111,24 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
     """
     os.makedirs(outdir, exist_ok=True)
 
-    fig, axes = plt.subplots(4, 2, figsize=(6, 8), sharex=True)
+    fig, axes = plt.subplots(4, 2, figsize=(8, 8), sharex=True)
     axes = axes.flatten()
 
     for i, scale in enumerate(SCALES):
         plot_metric_by_setting(results, target, metric, scale, axes[i],
-                               agg=agg, legend=(i == 0))
-    axes[0].legend(title='')
+                               agg=agg, legend=(i == len(SCALES) - 1), 
+                               ymax=1 if metric.lower() == 'nse' else None)
+    axes[len(SCALES) - 1].legend(title='')
+
+    # Hide any unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
 
     fig.suptitle(f"{target}")
     plt.tight_layout()
 
+    if callable(agg):
+        agg = 'quantile'
     outfile = os.path.join(outdir, f"{agg}_{target}_{metric}_by_scale.png")
     plt.savefig(outfile, dpi=150)
     plt.close(fig)
@@ -300,6 +314,8 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
 # TODO: make more modular/general -> only for one scale for example
 # TODO: handle ties in medal rankings
 # https://pandas.pydata.org/docs/user_guide/style.html
+import pandas as pd
+
 def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     # --- 1. Data Preparation ---
     # Filter by target
@@ -322,8 +338,10 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     pivot_df.columns.name = None # Clear the 'model' column heading label
 
     # --- Calculate Medals and points ---
-    # Rank models across each row (1 is lowest/best)
-    ranks = pivot_df.rank(axis=1, method='first')
+    # Use method='min' for standard competition ranking (1, 1, 3) 
+    # Use method='dense' if you want consecutive ranking (1, 1, 2)
+    ranks = pivot_df.rank(axis=1, method='min')
+    
     gold = (ranks == 1).sum()
     silver = (ranks == 2).sum()
     bronze = (ranks == 3).sum()
@@ -343,20 +361,26 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     
     # --- 2. Color Logic Calculation ---
     def highlight_medals(row):
+        # Skip styling for the summary rows
         if row.name[0] == 'Summary':
             return ['font-weight: bold; background-color: #f8f9fa'] * len(row)
         
         styles = [''] * len(row)
-        # Drop NaNs and sort to find the top 3 models per row
-        valid_vals = row.dropna().sort_values(ascending=True)
+        
+        # Rank the row using the exact same tie-breaking logic as the points
+        row_ranks = row.rank(method='min')
+        
         colors = {
-            0: 'background-color: #FFD700', # Gold
-            1: 'background-color: #C0C0C0', # Silver
-            2: 'background-color: #CD7F32'  # Bronze
+            1: 'background-color: #FFD700', # Gold
+            2: 'background-color: #C0C0C0', # Silver
+            3: 'background-color: #CD7F32'  # Bronze
         }
-        for rank in range(min(3, len(valid_vals))):
-            loc = row.index.get_loc(valid_vals.index[rank])
-            styles[loc] = colors[rank]
+        
+        # Apply colors based on the computed rank
+        for i, rank in enumerate(row_ranks):
+            if rank in colors:
+                styles[i] = colors[rank]
+                
         return styles
 
     # --- 3. Apply Styles and Export to HTML ---
@@ -396,13 +420,12 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
         pivot_df.style
         .format(precision=2, na_rep="-")
         .set_table_styles([table, cells, body_cells, heading1, heading2, heading_cols])
-        .apply(highlight_medals, axis=1) # Changed to axis=1 to evaluate medals across rows
+        .apply(highlight_medals, axis=1)
     )
 
     # Add solid lines between setting groups (horizontal borders)
     for i in range(len(pivot_df) - 1):
         if pivot_df.index[i][0] != pivot_df.index[i+1][0]:
-            # thickness = "2px" if pivot_df.index[i][0] == "Summary" else "1px"
             thickness = "1px"
             styler.set_table_styles({
                 pivot_df.index[i]: [
@@ -436,3 +459,220 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(html_output)
     print(f"Transposed styled HTML table saved to {filename}")
+
+
+def get_hex_color(val, min_val, max_val, lower_is_better=True):
+    """Interpolates a value into a Red-White-Green Hex color string."""
+    if pd.isna(val) or max_val == min_val:
+        return "FFFFFF" # Default white for NaNs or completely tied columns
+        
+    # Normalize between 0 (worst) and 1 (best)
+    if lower_is_better:
+        ratio = (max_val - val) / (max_val - min_val)
+    else:
+        ratio = (val - min_val) / (max_val - min_val)
+        
+    # Standard Excel-like Red, White, Green
+    # Red: (248, 105, 107), White: (255, 255, 255), Green: (99, 190, 123)
+    if ratio < 0.5:
+        # Interpolate Red to White
+        t = ratio / 0.5
+        r = int(248 + t * (255 - 248))
+        g = int(105 + t * (255 - 105))
+        b = int(107 + t * (255 - 107))
+    else:
+        # Interpolate White to Green
+        t = (ratio - 0.5) / 0.5
+        r = int(255 + t * (99 - 255))
+        g = int(255 + t * (190 - 255))
+        b = int(255 + t * (123 - 255))
+        
+    return f"{r:02X}{g:02X}{b:02X}"
+
+
+def format_sig_figs(val, n=2):
+    """Formats a number to n significant figures."""
+    if pd.isna(val) or val == 0:
+        return str(val)
+    # This handles scientific notation and standard float formatting automatically
+    return f"{val:.{n}g}"
+
+
+def get_hex_relative_color(val, best_val, rel_threshold=1.0, lower_is_better=True):
+    """
+    Colors values based on their distance from the best value in the column.
+    Green = Best
+    White = Best + (Best * rel_threshold) [for lower_is_better]
+    """
+    if pd.isna(val) or pd.isna(best_val):
+        return "FFFFFF"
+
+    # Define the 'Limit' where the color fades to white
+    if lower_is_better:
+        # e.g., Best is 0.1, threshold is 1.0 (double). Limit is 0.2.
+        limit = best_val * (1 + rel_threshold)
+        if val <= best_val: ratio = 1.0
+        elif val >= limit: ratio = 0.0
+        else:
+            # Linear interpolation between best and limit
+            ratio = (limit - val) / (limit - best_val)
+    else:
+        # e.g., Best is 0.8, threshold is 0.5 (half). Limit is 0.4.
+        limit = best_val * (1 - rel_threshold)
+        if val >= best_val: ratio = 1.0
+        elif val <= limit: ratio = 0.0
+        else:
+            ratio = (val - limit) / (best_val - limit)
+
+    # Gradient: Green (99, 190, 123) to White (255, 255, 255)
+    r = int(255 - (ratio * (255 - 99)))
+    g = int(255 - (ratio * (255 - 190)))
+    b = int(255 - (ratio * (255 - 123)))
+    
+    return f"{r:02X}{g:02X}{b:02X}"
+
+
+
+def create_latex_leaderboard(df, target, metric, filename, aggfunc='median', 
+                             lower_is_better=True,
+                             scale_order=['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'],
+                             model_order=None,
+                             rel_threshold=0.2, display_mode='rank'):
+    # --- 1. Data Preparation (Transposed) ---
+    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
+    
+    pivot_df = subset.pivot_table(
+        index='model', 
+        columns=['setting', 'scale'], 
+        values=metric, 
+        aggfunc=aggfunc
+    )
+
+    # --- Enforce Custom Scale Order ---
+    if scale_order is not None:
+        # Extract the settings in their current order to preserve them
+        settings = pivot_df.columns.get_level_values(0).unique()
+        
+        # Rebuild the list of columns enforcing the scale_order per setting
+        ordered_cols = []
+        for s in settings:
+            for sc in scale_order:
+                if (s, sc) in pivot_df.columns:
+                    ordered_cols.append((s, sc))
+                    
+            # Catch any stray scales present in the data but missing from your scale_order
+            for col in pivot_df.columns:
+                if col[0] == s and col not in ordered_cols:
+                    ordered_cols.append(col)
+                    
+        # Apply the new column order to the DataFrame
+        pivot_df = pivot_df[ordered_cols]
+
+    # --- Enforce Custom Model Order ---
+    if model_order is not None:
+        # Reindex the DataFrame to have rows in the specified model order
+        pivot_df = pivot_df.reindex(model_order)
+    
+    # --- Calculate Medals and points ---
+    ranks = pivot_df.rank(axis=0, method='min', ascending=lower_is_better)
+    
+    gold = (ranks == 1).sum(axis=1)
+    silver = (ranks == 2).sum(axis=1)
+    bronze = (ranks == 3).sum(axis=1)
+    
+    points = (gold * 3) + (silver * 2) + (bronze * 1)
+    
+    # --- 2. Build the Cell Strings (Colors + Rank numbers) ---
+    # latex_df = pd.DataFrame(index=pivot_df.index, columns=pivot_df.columns)
+    
+    # for col in pivot_df.columns:
+    #     col_data = pivot_df[col]
+    #     min_v = col_data.min()
+    #     max_v = col_data.max()
+        
+    #     for row_idx in pivot_df.index:
+    #         val = col_data[row_idx]
+    #         if pd.isna(val):
+    #             latex_df.loc[row_idx, col] = "-"
+    #             continue
+                
+    #         hex_color = get_hex_color(val, min_v, max_v, lower_is_better=lower_is_better)
+            
+    #         rank_val = ranks.loc[row_idx, col]
+    #         text = str(int(rank_val)) if rank_val <= 3 else ""
+            
+    #         latex_df.loc[row_idx, col] = f"\\cellcolor[HTML]{{{hex_color}}} {text}"
+    latex_df = pd.DataFrame(index=pivot_df.index, columns=pivot_df.columns)
+    
+    for col in pivot_df.columns:
+        col_data = pivot_df[col]
+        # Reference point for the scale: The best model in this specific task
+        best_in_col = col_data.min() if lower_is_better else col_data.max()
+        
+        for row_idx in pivot_df.index:
+            val = col_data[row_idx]
+            if pd.isna(val):
+                latex_df.loc[row_idx, col] = "-"
+                continue
+
+            if display_mode == 'value':
+                cell_text = format_sig_figs(val, n=2)
+            elif display_mode == 'rank':
+                r_val = ranks.loc[row_idx, col]
+                cell_text = str(int(r_val)) if r_val <= 3 else ""
+            else:
+                cell_text = ""
+                
+            hex_color = get_hex_relative_color(val, best_in_col, rel_threshold, lower_is_better)
+            latex_df.loc[row_idx, col] = f"\\cellcolor[HTML]{{{hex_color}}} {cell_text}"
+
+    # --- 3. Append Summary Columns and Sort ---
+    latex_df[('Summary', 'Points')] = points.astype(int)
+    # latex_df[('Summary', 'Medals')] = [f"G:{int(g)} S:{int(s)} B:{int(b)}" for g, s, b in zip(gold, silver, bronze)]
+    
+    if model_order is None:
+        latex_df = latex_df.sort_values(by=('Summary', 'Points'), ascending=False)
+    latex_df.index.name = None 
+
+    # --- 4. Format Column Headers & Build Gaps ---
+    new_cols = []
+    col_format = "l" # First column is for the model names
+    
+    # Build the header names and the LaTeX column format layout simultaneously
+    prev_setting = latex_df.columns[0][0]
+    
+    for setting, scale in latex_df.columns:
+        # Add visual gaps between settings using @{\hspace{...}}
+        if setting != prev_setting:
+            col_format += "@{\\hspace{1.5em}}" 
+            prev_setting = setting
+        col_format += "c"
+        
+        # Apply the rotation wrapper
+        if setting == 'Summary':
+            new_cols.append((setting, scale))
+        else:
+            new_cols.append((setting, f"\\rotatebox{{90}}{{{scale}}}"))
+            
+    latex_df.columns = pd.MultiIndex.from_tuples(new_cols)
+
+    # --- 5. Export to LaTeX ---
+    latex_str = latex_df.to_latex(
+        escape=False, 
+        na_rep="-", 
+        column_format=col_format,
+        multicolumn_format="c"
+    )
+    
+    # Wrap in a group to locally shrink the column padding (makes the colored boxes narrower)
+    latex_str = "{\\setlength{\\tabcolsep}{3pt}\n" + latex_str + "}\n"
+    
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(latex_str)
+        
+    print(f"Publication-ready LaTeX leaderboard saved to {filename}")
+
+    # model_order = latex_df.index.tolist()
+    # return model_order
+
+    return latex_str

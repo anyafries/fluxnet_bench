@@ -67,7 +67,7 @@ if __name__ == "__main__":
                 target=target,
                 remove_missing_target=True,
                 path=args.path,
-                standardize=model_name in ['robust-lr', 'ridge'],
+                standardize=model_name in ['robust-lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd'],
                 astorch = model_name in ['mlp', 'gdro', 'coral', 'mmd']
             )
             xtrain, ytrain, envs_train = train
@@ -93,6 +93,13 @@ if __name__ == "__main__":
                     fit_args['envs'] = envs_train.values
                 if model_name == 'xgb':
                     fit_args['verbose'] = False
+                if model_name == 'lightgbm':
+                    import lightgbm as lgb
+                    fit_args['eval_metric'] = 'rmse'
+                    fit_args['callbacks'] = [
+                        lgb.early_stopping(stopping_rounds=10),
+                        lgb.log_evaluation(period=0) # Keeps logs clean
+                    ]
 
                 # Train model
                 model.fit(**fit_args)
