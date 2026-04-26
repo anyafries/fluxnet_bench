@@ -123,7 +123,7 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
         target (str): Current target (used for inheriting MLP params).
     """
     if model_name == 'lr':
-        return [{}] * n_iter
+        return [{}]
     
     best_mlp = None
     if model_name in ['gdro', 'coral', 'mmd']:
