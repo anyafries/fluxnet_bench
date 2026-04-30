@@ -25,7 +25,8 @@ ALL_TARGETS = ['ET', 'GPP', 'NEE']
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str,
-                        default='/Users/anfries/Documents/fluxnet_bench/data', #/r/scratch/users/anfries/fluxnet_data
+                        # default='/Users/anfries/Documents/fluxnet_bench/data', 
+                        default='/r/scratch/users/anfries/fluxnet_data',
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
