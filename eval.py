@@ -52,7 +52,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None,
     """
     available = find_available_experiments()
     if not available:
-        logger.error(f"No experiments found in {results_dir}.")
+        logger.error(f"No experiments found.")
         return pd.DataFrame()
 
     # Filter by val_strategy and other criteria
