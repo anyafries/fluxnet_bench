@@ -24,7 +24,8 @@ color_palette = sns.color_palette("tab10", n_colors=len(MODEL_ORDER))
 MODEL_COLORS = {model: color_palette[i] for i, model in enumerate(MODEL_ORDER)}
 
 # Setting ordering: time-split, spatial-easy, spatial-hard
-SETTINGS_ORDER = ['time-split', 'spatial-easy', 'spatial-hard', 
+SETTINGS_ORDER = ['time-split', 'spatial-easy40', 'TA40',
+                  'spatial-easy', 'spatial-hard', 
                   'LST', 'TA', 'VPD', 
                   'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET', 
                   'forest', 'grass-savanna', 'schrub-savanna',
@@ -135,7 +136,8 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
     logger.info(f"Saved: {outfile}")
 
 
-def plot_cdf(results, target, metric, scale, setting, ax, xmax=None):
+def plot_cdf(results, target, metric, scale, setting, ax, xmax=None,
+             linestyle='-', linewidth=2):
     """
     Plot CDF of metric for one target/scale/setting (single subplot).
 
@@ -174,10 +176,11 @@ def plot_cdf(results, target, metric, scale, setting, ax, xmax=None):
             sorted_values = np.sort(values)
 
         ax.plot(sorted_values, np.linspace(0, 1, len(sorted_values)), 
-                label=model_name, color=MODEL_COLORS.get(model_name, 'gray'))
+                label=model_name, color=MODEL_COLORS.get(model_name, 'gray'),
+                linestyle=linestyle, linewidth=linewidth)
 
     ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.3)
     ax.set_xlabel(f'{metric.upper()} (x)')
 
     env = "sites-years" if setting == 'time-split' else "sites"
@@ -188,8 +191,8 @@ def plot_cdf(results, target, metric, scale, setting, ax, xmax=None):
 
     if metric.lower() == 'nse':
         ax.set_xlim(-0.5, 1.0)
-    else:
-        ax.set_xlim(0, xmax)
+    # else:
+    #     ax.set_xlim(0, xmax)
 
     ax.set_title(setting)
     ax.legend()
@@ -319,7 +322,7 @@ import pandas as pd
 def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     # --- 1. Data Preparation ---
     # Filter by target
-    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
+    subset = df[(df['target'] == target)]
     
     # Pivot: Index=(Setting, Scale), Cols=Model, Values=Metric
     settings = get_ordered_settings(subset['setting'].unique())
@@ -498,7 +501,7 @@ def format_sig_figs(val, n=2):
     return f"{val:.{n}g}"
 
 
-def get_hex_relative_color(val, best_val, rel_threshold=1.0, lower_is_better=True):
+def get_hex_relative_color(val, best_val, rel_threshold=0.2, lower_is_better=True):
     """
     Colors values based on their distance from the best value in the column.
     Green = Best
@@ -532,147 +535,38 @@ def get_hex_relative_color(val, best_val, rel_threshold=1.0, lower_is_better=Tru
     return f"{r:02X}{g:02X}{b:02X}"
 
 
+def get_weighted_skill_scores(df, baseline_model='constant'):
+    """
+    Computes Continuous Skill Scores relative to a baseline.
+    Returns:
+      - skill_scores_df: The cell-by-cell skill scores.
+      - overall_scores: A Pandas Series of the final weighted average per model.
+    """
+    SCALE_WEIGHTS = {
+        'hourly': 1.0, 'daily': 1.0, 'weekly': 1.0, 'monthly': 1.0,
+        'seasonal': 1.0, 'anom': 1.0, 'iav': 1.0, 'site-mean': 1.0,
+    }
 
-def create_latex_leaderboard(df, target, metric, filename, aggfunc='median', 
-                             lower_is_better=True,
-                             scale_order=['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'],
-                             model_order=None,
-                             rel_threshold=0.2, display_mode='rank'):
-    # --- 1. Data Preparation (Transposed) ---
-    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
-    
-    pivot_df = subset.pivot_table(
-        index='model', 
-        columns=['setting', 'scale'], 
-        values=metric, 
-        aggfunc=aggfunc
-    )
-
-    # --- Enforce Custom Scale Order ---
-    if scale_order is not None:
-        # Extract the settings in their current order to preserve them
-        settings = pivot_df.columns.get_level_values(0).unique()
+    if baseline_model not in df.index:
+        print(f"Warning: Baseline '{baseline_model}' not found.")
+        return None, None
         
-        # Rebuild the list of columns enforcing the scale_order per setting
-        ordered_cols = []
-        for s in settings:
-            for sc in scale_order:
-                if (s, sc) in pivot_df.columns:
-                    ordered_cols.append((s, sc))
-                    
-            # Catch any stray scales present in the data but missing from your scale_order
-            for col in pivot_df.columns:
-                if col[0] == s and col not in ordered_cols:
-                    ordered_cols.append(col)
-                    
-        # Apply the new column order to the DataFrame
-        pivot_df = pivot_df[ordered_cols]
-
-    # --- Enforce Custom Model Order ---
-    if model_order is not None:
-        # Reindex the DataFrame to have rows in the specified model order
-        pivot_df = pivot_df.reindex(model_order)
+    baseline_errors = df.loc[baseline_model]
     
-    # --- Calculate Medals and points ---
-    ranks = pivot_df.rank(axis=0, method='min', ascending=lower_is_better)
+    # 1 - (Model_Error / Baseline_Error)
+    skill_scores_df = 1 - (df / baseline_errors)
     
-    gold = (ranks == 1).sum(axis=1)
-    silver = (ranks == 2).sum(axis=1)
-    bronze = (ranks == 3).sum(axis=1)
-    
-    points = (gold * 3) + (silver * 2) + (bronze * 1)
-    
-    # --- 2. Build the Cell Strings (Colors + Rank numbers) ---
-    # latex_df = pd.DataFrame(index=pivot_df.index, columns=pivot_df.columns)
-    
-    # for col in pivot_df.columns:
-    #     col_data = pivot_df[col]
-    #     min_v = col_data.min()
-    #     max_v = col_data.max()
+    aligned_weights = pd.Series(index=df.columns, dtype=float)
+    for col in df.columns:
+        scale_name = col[-1] if isinstance(col, tuple) else col
+        aligned_weights[col] = SCALE_WEIGHTS.get(scale_name, 1.0) 
         
-    #     for row_idx in pivot_df.index:
-    #         val = col_data[row_idx]
-    #         if pd.isna(val):
-    #             latex_df.loc[row_idx, col] = "-"
-    #             continue
-                
-    #         hex_color = get_hex_color(val, min_v, max_v, lower_is_better=lower_is_better)
-            
-    #         rank_val = ranks.loc[row_idx, col]
-    #         text = str(int(rank_val)) if rank_val <= 3 else ""
-            
-    #         latex_df.loc[row_idx, col] = f"\\cellcolor[HTML]{{{hex_color}}} {text}"
-    latex_df = pd.DataFrame(index=pivot_df.index, columns=pivot_df.columns)
-    
-    for col in pivot_df.columns:
-        col_data = pivot_df[col]
-        # Reference point for the scale: The best model in this specific task
-        best_in_col = col_data.min() if lower_is_better else col_data.max()
-        
-        for row_idx in pivot_df.index:
-            val = col_data[row_idx]
-            if pd.isna(val):
-                latex_df.loc[row_idx, col] = "-"
-                continue
+    def compute_weighted_mean(row):
+        mask = row.notna() & aligned_weights.notna()
+        if not mask.any():
+            return np.nan
+        return np.average(row[mask], weights=aligned_weights[mask])
 
-            if display_mode == 'value':
-                cell_text = format_sig_figs(val, n=2)
-            elif display_mode == 'rank':
-                r_val = ranks.loc[row_idx, col]
-                cell_text = str(int(r_val)) if r_val <= 3 else ""
-            else:
-                cell_text = ""
-                
-            hex_color = get_hex_relative_color(val, best_in_col, rel_threshold, lower_is_better)
-            latex_df.loc[row_idx, col] = f"\\cellcolor[HTML]{{{hex_color}}} {cell_text}"
-
-    # --- 3. Append Summary Columns and Sort ---
-    latex_df[('Summary', 'Points')] = points.astype(int)
-    # latex_df[('Summary', 'Medals')] = [f"G:{int(g)} S:{int(s)} B:{int(b)}" for g, s, b in zip(gold, silver, bronze)]
+    overall_scores = skill_scores_df.apply(compute_weighted_mean, axis=1)
     
-    if model_order is None:
-        latex_df = latex_df.sort_values(by=('Summary', 'Points'), ascending=False)
-    latex_df.index.name = None 
-
-    # --- 4. Format Column Headers & Build Gaps ---
-    new_cols = []
-    col_format = "l" # First column is for the model names
-    
-    # Build the header names and the LaTeX column format layout simultaneously
-    prev_setting = latex_df.columns[0][0]
-    
-    for setting, scale in latex_df.columns:
-        # Add visual gaps between settings using @{\hspace{...}}
-        if setting != prev_setting:
-            col_format += "@{\\hspace{1.5em}}" 
-            prev_setting = setting
-        col_format += "c"
-        
-        # Apply the rotation wrapper
-        if setting == 'Summary':
-            new_cols.append((setting, scale))
-        else:
-            new_cols.append((setting, f"\\rotatebox{{90}}{{{scale}}}"))
-            
-    latex_df.columns = pd.MultiIndex.from_tuples(new_cols)
-
-    # --- 5. Export to LaTeX ---
-    latex_str = latex_df.to_latex(
-        escape=False, 
-        na_rep="-", 
-        column_format=col_format,
-        multicolumn_format="c"
-    )
-    
-    # Wrap in a group to locally shrink the column padding (makes the colored boxes narrower)
-    latex_str = "{\\setlength{\\tabcolsep}{3pt}\n" + latex_str + "}\n"
-    
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(latex_str)
-        
-    print(f"Publication-ready LaTeX leaderboard saved to {filename}")
-
-    # model_order = latex_df.index.tolist()
-    # return model_order
-
-    return latex_str
+    return skill_scores_df, overall_scores

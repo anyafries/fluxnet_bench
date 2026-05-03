@@ -363,6 +363,26 @@ def aggregate_iav(df, mask=None, min_contribution=183,
     return yearly
 
 
+def aggregate_spatial(df, mask=None):
+    """
+    Compute spatial (site) means.
+
+    Calculate the mean across all time for each site,
+    to get the site level average predictions.
+
+    Args:
+        df: DataFrame with y_true, y_pred, env, time columns
+        mask: Optional boolean mask for valid data
+
+    Returns:
+        DataFrame with one row per timestamp, containing the spatial mean values
+    """
+    df, mask = _ensure_daily(df, mask)
+    yearly = aggregate_yearly(df, mask=mask, min_contribution=1)
+    yearly = yearly.groupby('env').mean().reset_index()
+    return yearly
+
+
 # =============================================================================
 # Registry
 # =============================================================================
@@ -374,5 +394,6 @@ AGGREGATIONS = {
     'monthly': aggregate_monthly,
     'seasonal': aggregate_seasonal,
     'anom': aggregate_anomaly,
-    'iav': aggregate_iav
+    'iav': aggregate_iav,
+    'spatial': aggregate_spatial,
 }
