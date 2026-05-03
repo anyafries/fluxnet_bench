@@ -45,7 +45,6 @@ if __name__ == "__main__":
     val_splits = ALL_VAL_SPLITS if args.val_split == 'all' else [args.val_split]
 
     # Load data
-    data_path = os.path.join(args.path, "daily_with_mask.csv")
     logger.info(f"Loading data from {args.path}...")
     df = load_data(args.path)
 
