@@ -47,6 +47,7 @@ def get_data_split(
     target="GPP",
     remove_missing_target=False,
     keep_lonlat=False,
+    keep_time=False,
     astorch=False,
     return_colnames=False,
     standardize=False,
@@ -64,6 +65,7 @@ def get_data_split(
             missing target values. Defaults to False.
         keep_lonlat (bool, optional): Whether to keep longitude and latitude
             features. Defaults to False.
+        keep_time (bool, optional): Whether to keep time feature. Defaults to False.
         astorch (bool, optional): Whether to return data as PyTorch tensors.
             Defaults to False.
         return_colnames (bool, optional): Whether to return column names of
@@ -84,9 +86,11 @@ def get_data_split(
     time_col = df_out["time"].copy()
 
     # drop columns
-    cols_to_drop = ["time"]
+    cols_to_drop = []
     if not keep_lonlat:
         cols_to_drop += ["tower_lat", "tower_lon"]
+    if not keep_time:
+        cols_to_drop += ["time"]
     for col in cols_to_drop:
         if col in df_out.columns:
             df_out.drop(columns=[col], inplace=True)
