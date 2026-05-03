@@ -57,8 +57,6 @@ G10.sort()
 # ------------------ Loading data -------------------
 # ---------------------------------------------------
 
-DROP_COLS = ['PFT_BSV', 'PFT_SNO', 'PFT_URB']
-
 def load_data(path):
     """Load the data from the specified path."""
     # each file in this folder is a site, and we want to load them all and concatenate into one dataframe
@@ -73,7 +71,6 @@ def load_data(path):
             df_site["site_id"] = site_id
             dfs.append(df_site)
     df = pd.concat(dfs, ignore_index=True)
-    df = df.drop(columns=DROP_COLS)
 
     bool_cols = df.select_dtypes(include='bool').columns
     for col in bool_cols:
