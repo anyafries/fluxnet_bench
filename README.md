@@ -1,80 +1,190 @@
 # FLUXNET Benchmark for Domain Generalization
 
-The FLUXNET benchmark is a framework for evaluating machine learning models under distribution shift using FLUXNET ecosystem flux data. It provides standardized train/test splits and evaluation metrics to enable fair comparison of domain generalization methods.
+A benchmark for evaluating ML models under distribution shift using FLUXNET eddy covariance data from 207 sites worldwide. Models are trained to predict ecosystem carbon and water fluxes and evaluated on held-out sites or time periods to measure robustness to covariate shift.
 
-The benchmark tests model performance on predicting **GPP (Gross Primary Productivity), NEE (Net Ecosystem Exchange), and Qle (Latent Heat Flux)** across different temporal and spatial splits.
+**Targets:** GPP (gross primary productivity), NEE (net ecosystem exchange), ET (evapotranspiration / latent heat flux).
 
-Information about the FLUXNET data: https://pad.gwdg.de/s/yuCtk9fj5
+![Idea](figures/idea.png)
+(a) An example of an eddy covariance tower (Photo: Ken W. Krauss, U.S. Geological Survey. Public domain), (b) The FLUXNET tower locations, (c) ET time series at two example towers, and the idea of upscaling: producing ET estimates at locations without towers.
+
+---
 
 ## Setup
 
 ```bash
-python3 -m venv fluxnet_bench_venv
+python -m venv fluxnet_bench_venv
 source fluxnet_bench_venv/bin/activate
-python3 -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
+
+PyTorch uses CPU by default. For GPU support, install the appropriate CUDA version of PyTorch separately.
+
+---
 
 ## Data
 
-Instructions on how to obtain the data are coming shortly.
+**Instructions on how to obtain the data are coming shortly.**
 
-## Running experiments
+Each site is stored as a CSV in `data/sites/`. The benchmark uses **13 covariates** per hourly observation:
+- **Meteorological:** air temperature (TA), vapor pressure deficit (VPD), incoming shortwave radiation (SW\_IN), and others
+- **Site characteristics:** IGBP vegetation type
+- **Satellite-derived:** enhanced vegetation index (EVI), land surface temperature (LST), normalized difference water index (NDWI), and others
 
-Train a model and evaluate on the test split:
+---
+
+## Distribution Shift Settings
+
+|  | `time-split` | `spatial-easy40` | `TA40` |
+|--|---|---|---|
+| **Description** | Train on years before 2018, validate on 2018, test on years after 2018 | Hold out 40 predefined test sites; train/validate on the rest | Hold out 25 warmer southern sites; train/validate on northern sites |
+| **Tests** | Temporal generalization — can a model trained on earlier years predict future flux dynamics? | Spatial generalization to new ecosystems across climate types | Robustness to a climate gradient — training and test sites differ systematically in temperature regime |
+| **Diagram** | ![time-split](figures/time_split.png) | ![spatial-easy](figures/site_split_space.png) | ![ta-split](figures/site_split_ta.png) |
+
+Run `--setting all` to run all three (default).
+
+---
+
+## Training
+
+Train a model and save predictions + metrics:
 
 ```bash
-python3 train_model.py
+python train_model.py --setting time-split --target GPP --model_name xgb
 ```
 
-Optional arguments:
-* `--path`: path to data directory (default: `data/`)
-* `--setting`: distribution shift scenario
-    - `time-split`: train on earlier years, test on later years (chronological split)
-    - `spatial-easy`: leave-one-group-out across 4 predefined site groups
-    - `spatial-hard`: train on northern sites, test on 25 southern sites
-    - `all`: run all three settings (default)
-* `--target`: target variable — `GPP`, `NEE`, `Qle`, or `all` (default: `all`)
-* `--model_name`: `lr`, `xgb`, `mlp`, `gdro` (default: `lr`)
-* `--override`: re-run and overwrite existing results
+| Argument | Options | Default | Description |
+|----------|---------|---------|-------------|
+| `--path` | path | `data/` | Data directory |
+| `--setting` | `time-split`, `spatial-easy40`, `TA40`, `all` | `all` | Distribution shift scenario |
+| `--target` | `GPP`, `NEE`, `ET`, `all` | `all` | Target variable |
+| `--model_name` | see table below | `lr` | Model to train |
+| `--rerun` | flag | off | Overwrite existing results |
 
-For example, to run XGBoost on the spatial-hard setting for GPP:
+Training performs random hyperparameter search and selects the best model under three validation strategies: `mean` (average site RMSE), `max` (worst-site RMSE), and `discrepancy` (max − min site RMSE). Results for all three strategies are saved.
 
-```bash
-python3 train_model.py --setting spatial-hard --target GPP --model_name xgb
-```
+### Available models
+
+| Name | Description |
+|------|-------------|
+| `lr` | Linear Regression |
+| `ridge` | Ridge Regression |
+| `robust-lr` | Huber Regressor |
+| `xgb` | XGBoost |
+| `lightgbm` | LightGBM |
+| `constant` | Dummy mean predictor |
+| `mlp` | Multi-layer Perceptron (PyTorch) |
+| `gdro` | Group DRO — minimizes worst-group loss (PyTorch) |
+| `coral` | CORAL domain adaptation (PyTorch) |
+| `mmd` | MMD domain adaptation (PyTorch) |
+
+---
 
 ## Evaluation
 
-Metrics are computed automatically after training across multiple temporal scales: **daily, weekly, monthly, seasonal (mean seasonal cycle), anom (anomalies), and iav (inter-annual variability)**.
-
-Results are saved as CSVs in `results/`. Plots are saved to `results/plots/`.
-
-Metrics reported: MSE, RMSE, MAE, NSE, R², bias, relative error.
-
-## Results
-
-### By time scale
-
-Maximum and median RMSE for each time scale are shown in `{max/median}_{target}_by_scale.png`. These are summarized in `medals_{target}.html`. You can download an [example leaderboard](https://github.com/anyafries/fluxnet_bench/blob/main/results/plots/medals_Qle.html) for Qle.
-
-### RMSE CDF at the daily scale
-
-The daily RMSE for the held-out sites/site-years are shown in `{target}_rmse_daily_cdf.png`. For example, for Qle,
-
-![Qle RMSE Daily CDF](results/plots/Qle_rmse_daily_cdf.png)
-
-## How do I add my own model?
-
-1. Add your model class under `models/` (e.g. `models/my_model.py`) following the existing pattern (implement `.fit(X, y)` / `.predict(X)`).
-2. Import it and register it in `get_model()` in `models/__init__.py`.
-3. Run with your model name:
+Metrics are computed automatically during training. To regenerate plots and leaderboards:
 
 ```bash
-python3 train_model.py --model_name your_model
+python eval.py --target GPP --val_strategy mean
 ```
+
+| Argument | Options | Default |
+|----------|---------|---------|
+| `--target` | `GPP`, `NEE`, `ET`, `all` | `all` |
+| `--setting` | `time-split`, `spatial-easy40`, `TA40` | all |
+| `--model` | model name | all |
+| `--metric` | `rmse`, `mae`, `nse`, `r2_score`, `bias` | `rmse` |
+| `--val_strategy` | `mean`, `max`, `discrepancy` | `mean` |
+| `--rerun` | flag | off | Recompute metrics from saved predictions |
+
+**Metrics** are reported at 7 temporal scales: hourly, daily, weekly, monthly, seasonal (mean seasonal cycle), anomalies, and inter-annual variability.
+
+**Outputs** are saved to `results/`:
+
+```
+results/
+├── models/      # predictions CSVs + best hyperparameters (JSON)
+├── metrics/     # per-scale metrics CSVs
+└── plots/
+    ├── mean/
+    ├── max/
+    └── discrepancy/
+```
+
+File naming follows `{setting}_{target}_{model}_val_{strategy}*`. The interactive leaderboard is at `results/plots/{strategy}/medals_{target}.html`.
+
+---
+
+## Adding Your Own Model
+
+### Step 1 — Create `models/my_model.py`
+
+Implement `fit` and `predict` with the following interface:
+
+```python
+class MyModel:
+    def __init__(self, param1=1.0):
+        self.param1 = param1
+
+    def fit(self, X, y, eval_set=None, envs=None):
+        """
+        X, y   : np.ndarray (or torch.Tensor if you opt into tensor mode — see Step 4)
+        eval_set: optional [(X_val, y_val)] for early stopping
+        envs   : optional array of site labels, for group-aware methods
+        """
+        ...
+        return self
+
+    def predict(self, X):
+        """Returns np.ndarray of shape (n_samples,)."""
+        ...
+```
+
+`eval_set` and `envs` are **optional** — the benchmark detects them via introspection and only passes them if your `fit` signature includes them. Leave them out if you don't need them.
+
+For a PyTorch example, see [models/mlp.py](models/mlp.py). For a group-aware example that uses `envs`, see [models/gdro.py](models/gdro.py).
+
+### Step 2 — Register in `models/__init__.py`
+
+Add an `elif` branch to `get_model()`:
+
+```python
+elif model_name == 'my-model':
+    from .my_model import MyModel
+    return MyModel(**params)
+```
+
+### Step 3 — Add hyperparameter search in `get_random_params()`
+
+In the same file, add a branch to `get_random_params()`:
+
+```python
+elif model_name == 'my-model':
+    params = {
+        'param1': np.random.uniform(0.1, 10.0),
+    }
+```
+
+Return `[{}]` if your model has no hyperparameters.
+
+### Step 4 — (PyTorch only) Update `train_model.py`
+
+If your model requires `torch.Tensor` inputs, add its name to the two lists on lines 62–63 of [train_model.py](train_model.py):
+
+```python
+standardize=model_name in ['robust-lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd', 'my-model'],
+astorch=model_name in ['mlp', 'gdro', 'coral', 'mmd', 'my-model']
+```
+
+Skip this step if your model works with numpy arrays.
+
+### Step 5 — Run
+
+```bash
+python train_model.py --model_name my-model --setting time-split --target GPP
+```
+
+---
 
 ## References
 
-Pastorello, G. et al. (2017) 'The FLUXNET2015 dataset: The longest record of global carbon, water, and energy fluxes is updated', Eos, 98.
-
-Pastorello, G. et al. (2020) 'The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data', Scientific Data, 7(1), p. 225. Available at: https://doi.org/10.1038/s41597-020-0534-3.
+Pastorello, G. et al. (2020) 'The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data', *Scientific Data*, 7(1), p. 225. https://doi.org/10.1038/s41597-020-0534-3
