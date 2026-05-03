@@ -13,7 +13,9 @@ results/plots/*
 !results/plots/medals_Qle.html
 tests/QuickEval/data/*
 tests/QuickEval/results/*
+paper_experiments/plots/*
 
 # other projects
 maxRM-RF-fluxnet*
 archive*
+paper_experiments/.Rhistory
