@@ -72,19 +72,21 @@ def load_csv(path):
 
 # ----------- Experiment discovery -----------
 
-def find_available_experiments(results_dir=None):
+def find_available_experiments(results_dir=RESULTS_DIR):
     """
     Find all available prediction files.
 
     Returns:
         list of tuples: (setting, target, model_name)
     """
+    results_dir = os.path.join(results_dir, 'models')
     if not os.path.exists(results_dir):
         logger.warning(f"Results directory not found: {results_dir}")
         return []
 
     experiments = []
     for filename in os.listdir(results_dir):
+        print(f"Checking file: {filename}")
         if filename.endswith('_predictions.csv'):
             # Parse filename: {setting}_{target}_{model}_val_{strategy}_predictions.csv
             base = filename.replace('_predictions.csv', '')
