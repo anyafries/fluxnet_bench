@@ -14,20 +14,14 @@ from utils.utils import setup_logging, get_metrics_path
 
 logger = setup_logging(__name__)
 
-ALL_SETTINGS = [
-    'time-space',
-    'time-split', 'spatial-easy', 'spatial-hard',
-    'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET',
-    'forest', 'schrub-savanna', 'grass-savanna',
-    'TA', 'VPD', 'LST', 'europe', 'rest-of-world',
-] + [f'hard-{i}' for i in range(1, 6)]
+ALL_SETTINGS = ['time-split', 'spatial-easy40', 'TA40']
 ALL_TARGETS = ['GPP', 'NEE', 'ET']
 ALL_VAL_SPLITS = ['iid', 'temporal', 'oracle']
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str, default='/Users/anfries/Documents/fluxnet_bench/data', #/r/scratch/users/anfries/fluxnet_data
+    parser.add_argument("--path", type=str, default='data',
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
@@ -133,7 +127,7 @@ if __name__ == "__main__":
 
                 # Final evaluation on test set with best model per strategy
                 logger.info("Model selection complete.")
-                logger.info(f"Saving predictions and metrics for {setting}/{target}/{model_name}...")
+                logger.info(f"Saving predictions and metrics for {save_setting_name}/{target}/{model_name}...")
                 for strategy, b in best.items():
                     logger.info(f"  [{strategy}] Best val score: {b['score']:.4f}")
                     save_best_params(b['params'], save_setting_name, target, model_name, val_strategy=strategy)
