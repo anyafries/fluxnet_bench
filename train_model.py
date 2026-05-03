@@ -12,26 +12,17 @@ from utils.utils import setup_logging, get_metrics_path
 
 logger = setup_logging(__name__)
 
-ALL_SETTINGS = [
-    'time-space',
-    'time-split', 'spatial-easy', 'spatial-hard',
-    'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET',
-    'forest', 'schrub-savanna', 'grass-savanna',
-    'TA', 'VPD', 'LST', 'europe', 'rest-of-world',
-] + [f'hard-{i}' for i in range(1, 6)]
+ALL_SETTINGS = ['time-split', 'spatial-easy40', 'TA40']
 ALL_TARGETS = ['ET', 'GPP', 'NEE']
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str,
-                        # default='/Users/anfries/Documents/fluxnet_bench/data', 
-                        default='/r/scratch/users/anfries/fluxnet_data',
+    parser.add_argument("--path", type=str, default='data',
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
     parser.add_argument("--setting", type=str,
-                        # choices=['time-split', 'spatial-easy', 'spatial-hard', 'all'],
+                        choices=['time-split', 'spatial-easy40', 'TA40'],
                         default='all', help="Experiment setting")
     parser.add_argument("--target", type=str, 
                         choices=['GPP', 'NEE', 'ET', 'all'],

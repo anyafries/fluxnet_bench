@@ -4,13 +4,7 @@ import logging
 import os
 import pandas as pd
 
-# __file__ is the path to utils.py
-# os.path.dirname(__file__) is the utils/ folder
-# os.path.dirname(os.path.dirname(__file__)) is your main benchmark folder!
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# Now define your results directory absolutely
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
+RESULTS_DIR = 'results'
 
 def setup_logging(name=None):
     """
@@ -85,10 +79,8 @@ def find_available_experiments(results_dir=None):
     Returns:
         list of tuples: (setting, target, model_name)
     """
-    if results_dir is None:
-        results_dir = os.path.join(RESULTS_DIR, 'models')
-
     if not os.path.exists(results_dir):
+        logger.warning(f"Results directory not found: {results_dir}")
         return []
 
     experiments = []

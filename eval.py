@@ -12,7 +12,7 @@ import pandas as pd
 
 from dataloader import load_predictions
 from utils.eval_utils import load_metrics, compute_and_save_metrics
-from utils.plots import plot_metric_grid, plot_cdf_grid, create_leaderboard, create_latex_leaderboard
+from utils.plots import plot_metric_grid, plot_cdf_grid, create_leaderboard
 from utils.utils import setup_logging, find_available_experiments
 
 logger = setup_logging(__name__)
@@ -52,7 +52,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None,
     """
     available = find_available_experiments()
     if not available:
-        logger.error("No experiments found in results/")
+        logger.error(f"No experiments found in {results_dir}.")
         return pd.DataFrame()
 
     # Filter by val_strategy and other criteria
@@ -86,6 +86,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Load and compare results from FLUXNET experiments"
     )
+    parser.add_argument("--results_dir", type=str, default='results/metrics',
+                        help="Directory where metrics are stored (default: results/metrics)")
+    parser.add_argument("--plots_dir", type=str, default='results/plots',
+                        help="Directory to save plots (default: results/plots)")
     parser.add_argument("--setting", type=str, default=None,
                         help="Filter by setting (e.g., 'spatial-easy')")
     parser.add_argument("--target", type=str, default=None,
@@ -105,11 +109,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Parse filters
+    results_dir = args.results_dir
+    plots_dir = args.plots_dir
     settings = [args.setting] if args.setting else None
     targets = [args.target] if args.target else None
     models = [args.model] if args.model else None
     scales = [args.scale] if args.scale else None
-    scale_order = [s for s in ['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'] if s in scales]
     metric = args.metric
     
     # Load results
@@ -122,12 +127,7 @@ if __name__ == "__main__":
         rerun=args.rerun,
     )
 
-    print(results.head())
-    print(results.tail())
-
     # Generate plots for all targets
-    # plots_dir = f'/Users/anfries/Documents/fluxnet_bench/results/plots/{args.val_strategy}'        
-    plots_dir = f'/r/scratch/users/anfries/fluxnet_data/results/plots/{args.val_strategy}'
     for target in results['target'].unique():
         plot_metric_grid(results, target, metric=metric, outdir=plots_dir)
         plot_metric_grid(results, target, 

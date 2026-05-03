@@ -10,48 +10,10 @@ from utils.utils import setup_logging, get_predictions_path, load_csv, save_csv
 logger = setup_logging(__name__)
 
 # -----------------------------------------------------------------------
-# --------- Predefined spatial groups for "spatial" CV setting ----------
+# Predefined site groups
 # -----------------------------------------------------------------------
 
-# 25 most southern sites
 
-SOUTHERN_SITES = [
-    'AR-CCg', 'AR-TF1',
-    'AU-ASM', 'AU-Boy', 'AU-Cpr', 'AU-Cum', 'AU-DaS',
-    'AU-Dry', 'AU-GWW', 'AU-Lit', 'AU-Lon' ,'AU-Rgf', 
-    'AU-War', 'AU-Whr', 'AU-Wom',
-    'BR-Npw', # Brazil
-    'CL-SDF', # Chile
-    'IL-Yat', # Israel
-    'PE-QFR', # Peru
-    'US-xPU', 'US-ONA', 'US-SRS', 'US-KS3', 'US-SRM', 'US-SP1'
-]
-
-# Spatial split for 100 sites
-
-G1 = ['US-Tw1', 'US-Snf', 'CH-Cha', 'DE-Rns', 'US-xDL', 'US-Tw5', 'US-KLS', 'US-Rpf', 'CL-SDF', 'US-Tw3', 'AU-Dry', 'UK-AMo', 'US-SSH', 'US-Tw4', 'DK-Skj', 'US-Sne', 'US-Seg', 'US-xGR', 'RU-Fy2', 'AR-CCg', 'US-CGG', 'RU-Fyo', 'FR-Hes', 'FR-Bil', 'DE-Hai']
-G2 = ['US-CS3', 'US-A74', 'CZ-BK1', 'CA-TP3', 'SE-Nor', 'DE-Gri', 'US-CS2', 'CA-HPC', 'CA-BOU', 'US-StJ', 'DE-Hzd', 'FR-Tou', 'AU-Whr', 'ES-Abr', 'US-xWD', 'US-CS5', 'AU-GWW', 'DE-RuR', 'US-RGo', 'BE-Dor', 'US-Syv', 'US-EDN', 'US-CS1', 'IT-BCi', 'US-CS4']
-G3 = ['AR-TF1', 'AT-Neu', 'AU-ASM', 'AU-Boy', 'AU-Cpr', 'AU-Cum', 'AU-DaS', 'AU-Lit', 'AU-Lon', 'AU-Rgf', 'AU-War', 'AU-Wom', 'BR-Npw', 'CA-Cbo', 'NL-Loo', 'PE-QFR', 'CA-DB2', 'CA-DBB', 'CA-EM1', 'CA-ER1', 'CA-LP1', 'CA-SCB', 'CA-SCC', 'CA-TP1', 'CA-TPD']
-G4 = ['CH-Dav', 'CZ-KrP', 'CZ-Lnz', 'CZ-RAJ', 'BE-Bra', 'BE-Lon', 'CZ-Stn', 'CZ-wet', 'DE-Geb', 'DE-HoH', 'DE-Kli', 'DE-Msr', 'DE-Obe', 'DE-RuS', 'DE-Tha', 'DK-Sor', 'DK-Vng', 'ES-Agu', 'ES-LJu', 'ES-LM1', 'ES-LM2', 'FI-Hyy', 'FI-Let', 'FI-Qvd', 'FI-Sii']
-G1.sort()
-G2.sort()
-G3.sort()
-G4.sort()
-
-# For all sites we also use the following
-
-G5 = ['BE-Maa', 'BE-Vie', 'FI-Var', 'FR-Aur', 'FR-CLt', 'FR-EM2', 'FR-FBn', 'FR-Fon', 'FR-Gri', 'FR-Lam', 'FR-Mej', 'FR-Pue', 'IE-Cra', 'IL-Yat', 'IT-BFt', 'IT-Cp2', 'IT-Lav', 'IT-Lsn', 'IT-MBo', 'IT-MtM', 'IT-MtP', 'IT-Noe', 'IT-Ren', 'IT-SR2', 'IT-Tor']
-G6 = ['IT-TrF', 'JP-BBY', 'RU-Fy3', 'SE-Htm', 'SE-Lnn', 'SE-Ros', 'SE-St1', 'SE-Svb', 'US-A32', 'US-ALQ', 'US-ARM', 'US-Akn', 'US-BRG', 'US-BZB', 'US-BZF', 'US-BZS', 'US-BZo', 'US-Bar', 'US-Bi1', 'US-Bi2', 'US-CF1', 'US-CF2', 'US-CF3', 'US-CF4', 'US-CS6']
-G7 = ['US-CdM', 'US-Cst', 'US-DFC', 'US-DS3', 'US-Dmg', 'US-EML', 'US-GLE', 'US-HB1', 'US-HB2', 'US-HB3', 'US-HWB', 'US-Hn2', 'US-Hn3', 'US-Ho1', 'US-Ho2', 'US-Jo2', 'US-KFS', 'US-KS3', 'US-Kon', 'US-MMS', 'US-MOz', 'US-Me2', 'US-Me6', 'US-Mo1', 'US-Mo2']
-G8 = ['US-Mo3', 'US-Mpj', 'US-NC3', 'US-NC4', 'US-NGB', 'US-NGC', 'US-NR1', 'US-Ne1', 'US-ONA', 'US-ORv', 'US-Pnp', 'US-RGA', 'US-RGB', 'US-RGW', 'US-RRC', 'US-Rls', 'US-Rms', 'US-Ro1', 'US-Ro2', 'US-Ro4', 'US-Ro5', 'US-Ro6', 'US-Rwf', 'US-Rws', 'US-SP1']
-G9 = ['US-SRG', 'US-SRM', 'US-SRS', 'US-Ses', 'US-Srr', 'US-Ton', 'US-UC1', 'US-UC2', 'US-UMB', 'US-UMd', 'US-Var', 'US-Vcm', 'US-Vcp', 'US-Whs', 'US-Wkg', 'US-YK2', 'US-xAB', 'US-xAE', 'US-xBA', 'US-xBL', 'US-xBN', 'US-xBR', 'US-xCL', 'US-xCP', 'US-xDC']
-G10 = ['US-xDJ', 'US-xDS', 'US-xHE', 'US-xJE', 'US-xJR', 'US-xKA', 'US-xKZ', 'US-xMB', 'US-xML', 'US-xNG', 'US-xNQ', 'US-xRM', 'US-xSB', 'US-xSC', 'US-xSE', 'US-xSJ', 'US-xSL', 'US-xSR', 'US-xST', 'US-xTA', 'US-xTR', 'US-xUK', 'US-xUN', 'US-xYE']
-G5.sort()
-G6.sort()
-G7.sort()
-G8.sort()
-G9.sort()
-G10.sort()
 
 # ---------------------------------------------------
 # ------------------ Loading data -------------------
@@ -59,7 +21,8 @@ G10.sort()
 
 def load_data(path):
     """Load the data from the specified path."""
-    # each file in this folder is a site, and we want to load them all and concatenate into one dataframe
+    # each file in this folder is a site
+    # load them all and concatenate into one dataframe
     path = os.path.join(path, "sites")
     if not os.path.exists(path):
         raise FileNotFoundError(f"Data path not found: {path}")
@@ -77,58 +40,6 @@ def load_data(path):
         nunique = df[col].nunique(dropna=False)
         assert nunique == 2, f"Expected boolean column {col} to have exactly 2 unique values, but found {nunique}"
     return df
-
-
-# -------------------------------------------------------------------------
-# ------------------ helpers for the overlap experiments ------------------
-# -------------------------------------------------------------------------
-
-def get_ta_overlap_site_groups(df_out, regime, val_size=30):
-    """
-    Deterministic TA-overlap split.
-
-    Idea:
-    - Fix a hot test set (top-60 TA sites → every 2nd site = 30 test sites)
-    - Replace nearby "hot neighbours" (S1) with cold sites (S2)
-    - Control overlap via k ∈ {30,20,10,0}
-
-    Regimes:
-        k = 30 → full overlap (all hot neighbours included)
-        k = 0  → strong gap (only cold sites instead of neighbours)
-    """
-
-    # Parse regime (e.g. "TA-overlap-20" → k=20)
-    k = int(str(regime).split("-")[-1])
-    assert k in {30, 20, 10, 0}, f"Invalid TA-overlap regime: {regime}"
-
-    # Rank sites by mean TA
-    site_ta = df_out.groupby("site_id")["TA"].mean().sort_values(ascending=False)
-    sites = site_ta.index.tolist()
-
-    # Define base partitions (hottest 60, rest)
-    hottest, remaining = sites[:60], sites[60:]
-
-    # test_group: every second site from X, hot_set: remaining hot sites
-    test_group, hot_set = hottest[::2], hottest[1::2]
-    test_mean_ta = site_ta.loc[test_group].mean()
-    hot_set = sorted(hot_set, key=lambda s: abs(site_ta.loc[s] - test_mean_ta))
-
-    # cold_set: 30 coldest sites, remaining: rest of the sites (for VAL sampling)
-    cold_set, remaining = remaining[-30:][::-1], remaining[:-30]
-
-    # val set
-    np.random.seed(42)
-    val_group = np.random.choice(remaining, size=val_size, replace=False).tolist()
-    remaining = [s for s in remaining if s not in val_group]
-
-    train_group = hot_set[:k] + cold_set[:30-k] + remaining
-
-    # Sanity checks: disjointness
-    assert not (set(train_group) & set(val_group))
-    assert not (set(train_group) & set(test_group))
-    assert not (set(val_group) & set(test_group))
-
-    return train_group, val_group, test_group
 
 
 # -----------------------------------------------------------------------
@@ -169,13 +80,11 @@ def get_data_split(
         tuple: xtrain, ytrain, envs_train, xtest, ytest, envs_test
     """
     # Subset the correct data
-    if setting in ["time-split", "time-space"]:
+    if setting == "time-split":
         sites_to_keep = pd.read_csv(os.path.join(path, "sites_with_2018.csv"))
         df_out = df.loc[df["site_id"].isin(sites_to_keep['site_id'].values)].copy()
-    else: # setting in ["spatial-easy", "spatial-hard"]:
+    else: 
         df_out = df.copy()
-    # else:
-    #     raise ValueError(f"Setting `{setting}` not recognized in get_data_split") 
 
     # Preserve time column if needed for metadata
     time_col = df_out["time"].copy()
@@ -197,126 +106,12 @@ def get_data_split(
         train = df_out.loc[df_out["year"] < 2018].copy()
         val = df_out.loc[df_out["year"] == 2018].copy()
         test = df_out.loc[df_out["year"] > 2018].copy()
-
-    elif setting == "time-space":
-        if validation_split != 'default':
-            raise NotImplementedError("Custom validation split not implemented for time-space setting")
-        # 1. Define site groups based on "hard-1"
-        test_group = ['AU-Rgf', 'AU-War', 'BR-Npw', 'CA-Cbo', 'DK-Vng', 'FR-Gri', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-Lav', 'IT-TrF', 'US-A32', 'US-ARM', 'US-Bi1', 'US-Bi2', 'US-DFC', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-Tw4']
-        
-        all_sites = df_out["site_id"].unique().tolist()
-        remaining_sites = [site for site in all_sites if site not in test_group]
-        
-        np.random.seed(42)
-        np.random.shuffle(remaining_sites)
-        val_group = remaining_sites[:20]
-        
-        # 2. Split by both time AND space
-        df_out['site_year'] = list(zip(df_out['site_id'], df_out['year']))
-        train = df_out.loc[(df_out["year"] < 2018) & (~df_out["site_id"].isin(test_group + val_group))].copy()
-        val = df_out.loc[(df_out["year"] == 2018) & (df_out["site_id"].isin(val_group))].copy()
-        test = df_out.loc[(df_out["year"] > 2018) & (df_out["site_id"].isin(test_group))].copy()
-        
-        if test.shape[0] == 0:
-            raise ValueError("No test data for time-space setting")
-
-    elif setting.startswith("TA-overlap"):
-        if validation_split != 'default':
-            raise NotImplementedError("Custom validation split not implemented for TA-overlap setting")
-        train_group, val_group, test_group = get_ta_overlap_site_groups(
-            df_out, setting, val_size=30)
-        train = df_out.loc[df_out["site_id"].isin(train_group)].copy()
-        val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
-        test = df_out.loc[df_out["site_id"].isin(test_group)].copy()
         
     else:
-        if setting == "spatial-easy":
-            test_group = G1
-        elif setting == "spatial-hard":
-            test_group = SOUTHERN_SITES
-        elif setting in ["PFT_CRO", "PFT_ENF", "PFT_GRA", "PFT_WET"]:
-            test_group = df_out.loc[df_out[setting] == 1, "site_id"].unique().tolist()
-        elif setting == "forest":
-            forest_columns = ["PFT_DBF", "PFT_DNF", "PFT_EBF"]
-            test_group = df_out.loc[df_out[forest_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
-        elif setting == "schrub-savanna":
-            shrub_savanna_columns = ["PFT_OSH", "PFT_SAV", "PFT_WSA"]
-            test_group = df_out.loc[df_out[shrub_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
-        elif setting == 'grass-savanna':
-            grass_savanna_columns = ["PFT_GRA", "PFT_SAV", "PFT_WSA"]
-            test_group = df_out.loc[df_out[grass_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
-        elif setting == 'TA':
-            test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst']
-        elif setting == "VPD":
-            test_group = ['AU-ASM', 'AU-Lon', 'AU-Dry', 'US-SRM', 'US-SRG', 'US-Jo2', 'AU-DaS', 'US-xJR', 'US-SRS', 'US-Whs', 'US-Wkg', 'AU-GWW', 'AU-Cpr', 'US-Ses', 'US-CdM', 'US-Seg', 'US-Ton', 'US-RGo', 'AU-Lit', 'IL-Yat', 'ES-Abr', 'ES-LM2', 'ES-LM1', 'US-CGG', 'US-Hn2']
-        elif setting == "LST":
-            test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA']
-        elif setting == "europe":
-            europe = [
-                'IT', 'DE', 'FR', 'ES', 'SE', 'CZ', 
-                'FI', 'BE', 'DK', 'RU', 'CH', 'IE', 
-                'NL', 'UK'
-            ]
-            test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in europe]
-        elif setting == "rest-of-world":
-            rest = ['AU', 'AR', 'CL', 'IL', 'JP', 'BR'] + ['CA']
-            test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in rest]
-        elif setting[:6] == "random":
-            seed = int(setting.split("-")[1]) if "-" in setting else 42
-            np.random.seed(seed)
-            site_ids = df_out["site_id"].unique().tolist()
-            np.random.shuffle(site_ids)
-            test_group = site_ids[:25]
-        elif setting == 'spatial-easy40':
-            # G1 and G2 and 3 extra (to make 40)
+        if setting == 'spatial-easy40':
             test_group = ['US-Tw1', 'DE-Hai', 'US-Seg', 'US-Sne', 'US-Tw4', 'US-xDL', 'UK-AMo', 'AU-Dry', 'US-CGG', 'FR-Bil', 'US-Rpf', 'DK-Skj', 'RU-Fy2', 'DE-Rns', 'US-Tw3', 'RU-Fyo', 'US-Snf', 'CH-Cha', 'AR-CCg', 'CL-SDF', 'DE-Gri', 'FR-Tou', 'AU-Whr', 'AU-GWW', 'US-RGo', 'IT-BCi', 'ES-Abr', 'SE-Nor', 'DE-Hzd', 'US-CS2', 'US-StJ', 'CA-TP3', 'BE-Dor', 'US-xWD', 'US-Syv', 'DE-RuR', 'CZ-BK1', 'BE-Maa', 'BE-Vie', 'FI-Var']
-        elif setting in ["PFT_CRO", "PFT_ENF", "PFT_GRA", "PFT_WET"]:
-            test_group = df_out.loc[df_out[setting] == 1, "site_id"].unique().tolist()
-        elif setting == "forest":
-            forest_columns = ["PFT_DBF", "PFT_DNF", "PFT_EBF"]
-            test_group = df_out.loc[df_out[forest_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
-        elif setting == "schrub-savanna":
-            shrub_savanna_columns = ["PFT_OSH", "PFT_SAV", "PFT_WSA"]
-            test_group = df_out.loc[df_out[shrub_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
-        elif setting == 'grass-savanna':
-            grass_savanna_columns = ["PFT_GRA", "PFT_SAV", "PFT_WSA"]
-            test_group = df_out.loc[df_out[grass_savanna_columns].sum(axis=1) > 0, "site_id"].unique().tolist()
-        elif setting == 'TA':
-            test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst']
         elif setting == 'TA40':
             test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst', 'US-Wkg', 'IT-BCi', 'US-Jo2', 'IT-Cp2', 'US-RGo', 'ES-Abr', 'US-NC4', 'ES-Agu', 'US-Akn', 'US-xJR', 'ES-Pdu', 'US-Ton', 'ES-LM2', 'IT-Noe', 'ES-LM1']
-        elif setting == "VPD":
-            test_group = ['AU-ASM', 'AU-Lon', 'AU-Dry', 'US-SRM', 'US-SRG', 'US-Jo2', 'AU-DaS', 'US-xJR', 'US-SRS', 'US-Whs', 'US-Wkg', 'AU-GWW', 'AU-Cpr', 'US-Ses', 'US-CdM', 'US-Seg', 'US-Ton', 'US-RGo', 'AU-Lit', 'IL-Yat', 'ES-Abr', 'ES-LM2', 'ES-LM1', 'US-CGG', 'US-Hn2']
-        elif setting == "LST":
-            test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA']
-        elif setting == "LST40":
-            test_group = ['AU-Lon', 'AU-Dry', 'AU-ASM', 'AU-DaS', 'US-xJR', 'AU-GWW', 'AU-Lit', 'US-SRM', 'US-Whs', 'AU-Cpr', 'US-Jo2', 'US-Ses', 'US-Seg', 'US-SRS', 'US-Wkg', 'US-SRG', 'AU-Rgf', 'BR-Npw', 'IL-Yat', 'ES-Abr', 'ES-Agu', 'US-CGG', 'AU-Boy', 'US-CdM', 'US-ONA', 'US-xDS', 'US-Ton', 'AU-Whr', 'ES-LM2', 'US-Bi2', 'US-Dmg', 'ES-LM1', 'US-SP1', 'US-xCP', 'AU-Cum', 'US-ARM', 'US-RGo', 'US-xJE', 'ES-LJu', 'US-Srr']
-        elif setting == "europe":
-            europe = [
-                'IT', 'DE', 'FR', 'ES', 'SE', 'CZ', 
-                'FI', 'BE', 'DK', 'RU', 'CH', 'IE', 
-                'NL', 'UK'
-            ]
-            test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in europe]
-        elif setting == "rest-of-world":
-            rest = ['AU', 'AR', 'CL', 'IL', 'JP', 'BR'] + ['CA']
-            test_group = [site for site in df_out["site_id"].unique().tolist() if site[:2] in rest]
-        elif setting[:4] == "hard":
-            if setting == "hard-1":
-                # highest RMSE (avg ranking across targets) 
-                test_group = ['AU-Rgf', 'AU-War', 'BR-Npw', 'CA-Cbo', 'DK-Vng', 'FR-Gri', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-Lav', 'IT-TrF', 'US-A32', 'US-ARM', 'US-Bi1', 'US-Bi2', 'US-DFC', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-Tw4']
-            elif setting == "hard-2":
-                # highest increase (avg ranking across targets) 
-                test_group = ['AU-Rgf', 'BE-Lon', 'BE-Maa', 'CA-ER1', 'FR-Aur', 'FR-Lam', 'IT-BCi', 'IT-Cp2', 'IT-MtP', 'US-A32', 'US-ARM', 'US-Bi2', 'US-DS3', 'US-Dmg', 'US-Kon', 'US-Ne1', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-Ro1', 'US-Ro6', 'US-Sne', 'US-Snf', 'US-Tw1', 'US-Tw4']
-            elif setting == "hard-3":
-                # highest % increase (avg ranking across targets) 
-                test_group = ['AR-TF1', 'AU-ASM', 'AU-Lon', 'AU-Rgf', 'BE-Maa', 'CA-DB2', 'CA-DBB', 'CA-ER1', 'FI-Sii', 'FR-Aur', 'IL-Yat', 'IT-MtP', 'UK-AMo', 'US-A32', 'US-Bi2', 'US-DS3', 'US-Pnp', 'US-RGA', 'US-RGo', 'US-Sne', 'US-Snf', 'US-Srr', 'US-Tw1', 'US-Tw4', 'US-xJR']
-            elif setting == "hard-4":
-                # highest % increase (min rank)
-                test_group = ['AR-TF1', 'AU-ASM', 'AU-Rgf', 'BE-Maa', 'CA-DBB', 'CA-SCB', 'FI-Sii', 'FR-FBn', 'IT-Cp2', 'SE-Lnn', 'UK-AMo', 'US-Bi2', 'US-DS3', 'US-ICh', 'US-Pnp', 'US-Ro1', 'US-Sne', 'US-Snf', 'US-Srr', 'US-StJ', 'US-Tw1', 'US-Tw4', 'US-Vcm', 'US-xHE', 'US-xSL']
-            elif setting == "hard-5":
-                # hardest for ET
-                test_group = ['AU-Lit', 'BR-Npw', 'FR-FBn', 'IT-BCi', 'IT-Cp2', 'IT-Ren', 'IT-TrF', 'US-DS3', 'US-Dmg', 'US-HB1', 'US-HB2', 'US-HB3', 'US-KFS', 'US-NC3', 'US-NC4', 'US-ORv', 'US-Pnp', 'US-RGA', 'US-RGB', 'US-RGo', 'US-SP1', 'US-Sne', 'US-Snf', 'US-StJ', 'US-Tw4']
         else:
             raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
         
@@ -384,7 +179,7 @@ def get_data_split(
         f"Expected no missing values in features, but found {incomplete_train} in train and {incomplete_val} in val, and {incomplete_test} in test"
 
     # clean up
-    if setting in ["time-split", "time-space"]:
+    if setting == "time-split":
         env_col = "site_year"
     else:
         env_col = "site_id"

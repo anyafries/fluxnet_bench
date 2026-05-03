@@ -1,6 +1,5 @@
 """Temporal aggregation functions for FLUXNET benchmark.
 
-Pandas-based reimplementation of QuickEval's aggregation_util.py.
 Input DataFrames must have columns: y_true, y_pred, env, time (datetime).
 
 Supports:
@@ -9,8 +8,6 @@ Supports:
 - Anomalies from MSC
 - Inter-annual variability (IAV)
 - Spatial (site) means
-- Outlier detection (IQR or z-score based)
-- Moving window MSC computation
 """
 
 import numpy as np

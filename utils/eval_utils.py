@@ -11,16 +11,20 @@ import pandas as pd
 import os
 
 from utils.aggregation import AGGREGATIONS
-from utils.utils import setup_logging, get_metrics_path, get_params_path, save_csv, load_csv
+from utils.utils import (
+    setup_logging, 
+    get_metrics_path, 
+    get_params_path, 
+    save_csv, 
+    load_csv
+)
 
 logger = setup_logging(__name__)
-
 
 # -----------------------------------------------------------------------
 # ----------------------- Individual Metric Functions -------------------
 # -----------------------------------------------------------------------
 # Each function takes ytrue, ypred arrays and returns a scalar metric.
-# Convention: ytrue = observations (x in QuickEval), ypred = predictions (y in QuickEval)
 
 def rmse(ytrue, ypred):
     """Root Mean Squared Error."""
