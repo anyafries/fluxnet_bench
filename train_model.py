@@ -5,27 +5,24 @@ import pandas as pd
 from sklearn.metrics import root_mean_squared_error
 
 from dataloader import load_data, get_data_split, save_predictions
-from models import get_model, get_param_grid
+from models import get_model, get_random_params
 from tests.test_models import test_model
 from utils.eval_utils import compute_and_save_metrics, save_best_params
 from utils.utils import setup_logging, get_metrics_path
 
 logger = setup_logging(__name__)
 
-ALL_SETTINGS = [
-    'time-split', 'spatial-easy', 'spatial-hard'
-]
-ALL_TARGETS = ['GPP', 'NEE', 'ET']
-
+ALL_SETTINGS = ['time-split', 'spatial-easy40', 'TA40']
+ALL_TARGETS = ['ET', 'GPP', 'NEE']
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--path", type=str, default='data/',
+    parser.add_argument("--path", type=str, default='data',
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
     parser.add_argument("--setting", type=str,
-                        # choices=['time-split', 'spatial-easy', 'spatial-hard', 'all'],
+                        choices=['time-split', 'spatial-easy40', 'TA40'],
                         default='all', help="Experiment setting")
     parser.add_argument("--target", type=str, 
                         choices=['GPP', 'NEE', 'ET', 'all'],
@@ -45,12 +42,9 @@ if __name__ == "__main__":
     logger.info(f"Loading data from {args.path}...")
     df = load_data(args.path)
 
-    # get param grid for the model
-    param_grid = get_param_grid(model_name)
-
     # Run experiments
-    for setting in settings:
-        for target in targets:
+    for target in targets:
+        for setting in settings:
             logger.info(f"Running experiment: setting={setting}, target={target}, model={model_name}")
             if not args.rerun and all(
                 os.path.exists(get_metrics_path(setting, target, model_name, s))
@@ -59,27 +53,25 @@ if __name__ == "__main__":
                 logger.info(f"Results for {setting}/{target}/{model_name} already exist. Use --rerun to rerun.")
                 continue
 
-            best = {s: {'score': float('inf'), 'params': None, 'model': None}
-                    for s in ['mean', 'max', 'discrepancy']}
-
-            # TODO[LATER]: this function will change depending on how we store the data, and the preprocessing we do before
-            #       -> NB: before replacing, make sure to do all the data checks this function does
-            # train, val, xtest = get_data_split(
-            # Load data once per setting/target
             train, val, test = get_data_split(
                 df,
                 setting,
                 target=target,
                 remove_missing_target=True,
                 path=args.path,
+                standardize=model_name in ['robust-lr', 'ridge', 'mlp', 'gdro', 'coral', 'mmd'],
+                astorch = model_name in ['mlp', 'gdro', 'coral', 'mmd']
             )
             xtrain, ytrain, envs_train = train
             xval, yval, envs_val = val
             xtest = test[0]
 
-            logger.info(f"Starting Grid Search for {model_name} on {setting}-{target}...")
-
             # Hyperparameter tuning loop
+            logger.info(f"Starting random search for {model_name} on {setting}-{target}...")
+            param_grid = get_random_params(model_name, setting=setting, target=target)
+            best = {s: {'score': float('inf'), 'params': None, 'model': None}
+                    for s in ['mean', 'max', 'discrepancy']}
+            
             for i, params in enumerate(param_grid):
                 # Get model and train
                 model = get_model(model_name, params)
@@ -93,13 +85,24 @@ if __name__ == "__main__":
                     fit_args['envs'] = envs_train.values
                 if model_name == 'xgb':
                     fit_args['verbose'] = False
+                if model_name == 'lightgbm':
+                    import lightgbm as lgb
+                    fit_args['eval_metric'] = 'rmse'
+                    fit_args['callbacks'] = [
+                        lgb.early_stopping(stopping_rounds=10),
+                        lgb.log_evaluation(period=0) # Keeps logs clean
+                    ]
 
                 # Train model
                 model.fit(**fit_args)
 
                 # Evaluate on validation set
                 val_preds = model.predict(xval)
-                val_df = pd.DataFrame({'y_true': yval, 'y_pred': val_preds, 'env': envs_val.values})
+                val_df = pd.DataFrame({
+                    'y_true': yval.ravel(), 
+                    'y_pred': val_preds, 
+                    'env': envs_val.values
+                })
                 site_rmse = val_df.groupby('env')[['y_true', 'y_pred']].apply(
                     lambda g: root_mean_squared_error(g['y_true'], g['y_pred'])
                 )

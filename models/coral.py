@@ -42,6 +42,7 @@ class _AbstractDomainAlignment(ABC):
         self.early_stopping_rounds = early_stopping_rounds
         self.feature_extractor = None
         self.head = None
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def _build_model(self, input_dim):
         layers = []
@@ -78,6 +79,8 @@ class _AbstractDomainAlignment(ABC):
             raise ValueError(f"{type(self).__name__} requires environment labels (envs)")
 
         self._build_model(X.shape[1])
+        self.feature_extractor.to(self.device)
+        self.head.to(self.device)
 
         unique_envs = np.unique(envs)
         env_to_idx = {e: i for i, e in enumerate(unique_envs)}
@@ -91,8 +94,10 @@ class _AbstractDomainAlignment(ABC):
 
         use_val = eval_set is not None
         if use_val:
-            X_val_t = torch.tensor(eval_set[0][0], dtype=torch.float32)
-            y_val_t = torch.tensor(eval_set[0][1], dtype=torch.float32).view(-1, 1)
+            assert isinstance(eval_set[0][0], torch.Tensor), "Validation X must be a torch.Tensor"
+            assert isinstance(eval_set[0][1], torch.Tensor), "Validation y must be a torch.Tensor"
+            X_val_t = eval_set[0][0].to(self.device)
+            y_val_t = eval_set[0][1].to(self.device)
             best_val_loss = float('inf')
             best_extractor_weights = None
             best_head_weights = None
@@ -103,6 +108,10 @@ class _AbstractDomainAlignment(ABC):
             self.feature_extractor.train()
             self.head.train()
             for X_batch, y_batch, env_batch in loader:
+                X_batch = X_batch.to(self.device)
+                y_batch = y_batch.to(self.device)
+                env_batch = env_batch.to(self.device)
+                
                 optimizer.zero_grad()
                 pred, feats = self._forward(X_batch)
                 mse = F.mse_loss(pred, y_batch)
@@ -145,8 +154,11 @@ class _AbstractDomainAlignment(ABC):
         self.feature_extractor.eval()
         self.head.eval()
         with torch.no_grad():
-            X_t = torch.tensor(X, dtype=torch.float32)
-            return self.head(self.feature_extractor(X_t)).numpy().ravel()
+            # Move inputs to device
+            X_t = torch.tensor(X, dtype=torch.float32).to(self.device)
+            
+            # Predict, move back to CPU, convert to numpy, and flatten
+            return self.head(self.feature_extractor(X_t)).cpu().numpy().ravel()
 
 
 class CORAL(_AbstractDomainAlignment):

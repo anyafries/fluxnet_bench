@@ -17,8 +17,10 @@ class FluxnetDataset(Dataset):
             y: Target array of shape (n_samples,)
             env_indices: Integer environment indices of shape (n_samples,)
         """
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32).view(-1, 1)
+        assert isinstance(X, torch.Tensor), "X must be a torch.Tensor"
+        assert isinstance(y, torch.Tensor), "y must be a torch.Tensor"
+        self.X = X
+        self.y = y
         self.envs = torch.tensor(env_indices, dtype=torch.long)
 
     def __len__(self):

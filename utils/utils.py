@@ -79,10 +79,8 @@ def find_available_experiments(results_dir=None):
     Returns:
         list of tuples: (setting, target, model_name)
     """
-    if results_dir is None:
-        results_dir = os.path.join(RESULTS_DIR, 'models')
-
     if not os.path.exists(results_dir):
+        logger.warning(f"Results directory not found: {results_dir}")
         return []
 
     experiments = []

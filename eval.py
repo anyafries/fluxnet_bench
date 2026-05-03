@@ -52,7 +52,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None,
     """
     available = find_available_experiments()
     if not available:
-        logger.error("No experiments found in results/")
+        logger.error(f"No experiments found in {results_dir}.")
         return pd.DataFrame()
 
     # Filter by val_strategy and other criteria
@@ -86,6 +86,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Load and compare results from FLUXNET experiments"
     )
+    parser.add_argument("--results_dir", type=str, default='results/metrics',
+                        help="Directory where metrics are stored (default: results/metrics)")
+    parser.add_argument("--plots_dir", type=str, default='results/plots',
+                        help="Directory to save plots (default: results/plots)")
     parser.add_argument("--setting", type=str, default=None,
                         help="Filter by setting (e.g., 'spatial-easy')")
     parser.add_argument("--target", type=str, default=None,
@@ -99,16 +103,20 @@ if __name__ == "__main__":
     parser.add_argument("--val_strategy", type=str,
                         choices=['mean', 'max', 'discrepancy'], default='mean',
                         help="Validation strategy to load results for (default: mean)")
+    parser.add_argument("--metric", type=str, default='rmse',
+                        help="Metric to plot (default: rmse)")
 
     args = parser.parse_args()
 
     # Parse filters
+    results_dir = args.results_dir
+    plots_dir = args.plots_dir
     settings = [args.setting] if args.setting else None
     targets = [args.target] if args.target else None
-    # models = [args.model] if args.model else None
-    models = ['lr', 'xgb']
+    models = [args.model] if args.model else None
     scales = [args.scale] if args.scale else None
-
+    metric = args.metric
+    
     # Load results
     results = load_all_metrics(
         settings=settings,
@@ -119,16 +127,17 @@ if __name__ == "__main__":
         rerun=args.rerun,
     )
 
-    print(results.head())
-    print(results.tail())
-
     # Generate plots for all targets
-    plots_dir = f'results/plots/{args.val_strategy}'
     for target in results['target'].unique():
-        plot_metric_grid(results, target, outdir=plots_dir)
-        plot_metric_grid(results, target, agg='max', outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='hourly', metric='rmse', outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='daily', metric='rmse', outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='weekly', metric='rmse', outdir=plots_dir)
+        plot_metric_grid(results, target, metric=metric, outdir=plots_dir)
+        plot_metric_grid(results, target, 
+                        agg=lambda x: x.quantile(0.9),
+                        outdir=plots_dir, metric=metric)
+        plot_cdf_grid(results, target, scale='hourly', metric=metric, outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='daily', metric=metric, outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='weekly', metric=metric, outdir=plots_dir)
         create_leaderboard(results, target, metric='rmse',
                            filename=f'{plots_dir}/medals_{target}.html')
+        create_leaderboard(results, target, metric='rmse', 
+                           agg=lambda x: x.quantile(0.9),
+                           filename=f'{plots_dir}/medals_max_{target}.html')

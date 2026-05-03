@@ -1,6 +1,5 @@
 """Temporal aggregation functions for FLUXNET benchmark.
 
-Pandas-based reimplementation of QuickEval's aggregation_util.py.
 Input DataFrames must have columns: y_true, y_pred, env, time (datetime).
 
 Supports:
@@ -9,8 +8,6 @@ Supports:
 - Anomalies from MSC
 - Inter-annual variability (IAV)
 - Spatial (site) means
-- Outlier detection (IQR or z-score based)
-- Moving window MSC computation
 """
 
 import numpy as np
@@ -26,7 +23,7 @@ logger = setup_logging(__name__)
 # =============================================================================
 
 def _apply_mask(df, mask):
-    """Attach boolean mask without destroying the raw values."""
+    """Attach boolean mask without removing the raw values."""
     df = df.copy()
     if mask is None:
         df['valid'] = True
@@ -35,10 +32,12 @@ def _apply_mask(df, mask):
     return df
 
 
-def _ensure_daily(df, mask, min_contribution_hour_to_day=0.5):
+def _ensure_daily(df, mask, min_contribution_hour_to_day=12):
     """Helper to convert hourly data to daily before coarser aggregations."""
     df_daily = aggregate_daily(df, mask=mask, min_contribution=min_contribution_hour_to_day)
     # Create a new mask based on valid aggregated daily values
+    assert sum(df_daily['y_pred'].isna()) == 0, \
+        "Unexpected NaNs in y_pred after daily aggregation"
     new_mask = df_daily['y_true'].notna() & df_daily['y_pred'].notna()
     return df_daily, new_mask
 
@@ -75,7 +74,6 @@ def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean',
 
         # Apply threshold filtering
         result.loc[frac_true < min_contribution, 'y_true'] = np.nan
-        result.loc[frac_pred < min_contribution, 'y_pred'] = np.nan
         
     else:
         if early_masking:
@@ -94,7 +92,7 @@ def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean',
         )
         
         # Apply threshold filtering
-        result.loc[result['_n_valid'] < min_contribution, ['y_true', 'y_pred']] = np.nan
+        result.loc[result['_n_valid'] < min_contribution, 'y_true'] = np.nan
         
     # Return just the target columns cleanly
     return result[['y_true', 'y_pred']].reset_index()
@@ -104,13 +102,13 @@ def _agg_with_threshold(df, groupby_cols, min_contribution, method='mean',
 # Temporal Resampling: Daily → Coarser
 # =============================================================================
 
-def aggregate_hourly(df, mask=None, min_contribution=0.5):
-    """Aggregate hourly data to daily means, or return as-is if already daily."""
+def aggregate_hourly(df, mask=None):
+    """Return hourly data as-is, or apply mask if provided."""
     df = _apply_mask(df, mask)
     return df[df['valid']].drop(columns=['valid']).copy()
 
 
-def aggregate_daily(df, mask=None, min_contribution=0.5):
+def aggregate_daily(df, mask=None, min_contribution=12):
     """Aggregate hourly data to daily means, or return as-is if already daily."""
     df = _apply_mask(df, mask)
     df = df.copy()
@@ -125,8 +123,8 @@ def aggregate_daily(df, mask=None, min_contribution=0.5):
     return result.rename(columns={'_date': 'time'})
 
 
-def aggregate_weekly(df, mask=None, min_contribution=0.5, 
-                     min_contribution_hour_to_day=0.5):
+def aggregate_weekly(df, mask=None, min_contribution=4, 
+                     min_contribution_hour_to_day=12):
     """
     Aggregate daily data to weekly means.
 
@@ -150,8 +148,8 @@ def aggregate_weekly(df, mask=None, min_contribution=0.5,
     return result.drop(columns=['_week'])
 
 
-def aggregate_monthly(df, mask=None, min_contribution=0.5, 
-                      min_contribution_hour_to_day=0.5):
+def aggregate_monthly(df, mask=None, min_contribution=15, 
+                      min_contribution_hour_to_day=12):
     """
     Aggregate daily data to monthly means.
 
@@ -175,8 +173,8 @@ def aggregate_monthly(df, mask=None, min_contribution=0.5,
     return result.drop(columns=['_month'])
 
 
-def aggregate_yearly(df, mask=None, min_contribution=0.5, 
-                      min_contribution_hour_to_day=0.5):
+def aggregate_yearly(df, mask=None, min_contribution=183, 
+                      min_contribution_hour_to_day=12):
     """
     Aggregate daily data to yearly means.
 
@@ -206,9 +204,8 @@ def aggregate_yearly(df, mask=None, min_contribution=0.5,
 # =============================================================================
 
 def compute_msc(df, mask=None, min_contribution=2, 
-                min_contribution_hour_to_day=0.5, method='mean',
-                return_long=False, return_outlier_mask=False,
-                z_outlier=None, test_direction=0):
+                min_contribution_hour_to_day=12, method='mean',
+                return_outlier_mask=False):
     """
     Compute mean seasonal cycle (MSC) per site.
 
@@ -266,7 +263,7 @@ def compute_msc(df, mask=None, min_contribution=2,
 # =============================================================================
 
 def aggregate_seasonal(df, mask=None, min_contribution=2, 
-                       min_contribution_hour_to_day=0.5,
+                       min_contribution_hour_to_day=12,
                        method='mean'):
     """
     Compute mean seasonal cycle (short form).
@@ -285,11 +282,11 @@ def aggregate_seasonal(df, mask=None, min_contribution=2,
     """
     df, mask = _ensure_daily(df, mask, min_contribution_hour_to_day)
     return compute_msc(df, mask=mask, min_contribution=min_contribution,
-                       method=method, return_long=False)
+                       method=method)
 
 
 def aggregate_anomaly(df, mask=None, min_contribution=2, 
-                      min_contribution_hour_to_day=0.5,
+                      min_contribution_hour_to_day=12,
                       method='mean'):
     """
     Compute anomalies from mean seasonal cycle.
@@ -320,7 +317,7 @@ def aggregate_anomaly(df, mask=None, min_contribution=2,
 
     # Compute MSC
     msc = compute_msc(df, mask=None, min_contribution=min_contribution,
-                      method=method, return_long=False)
+                      method=method)
     msc = msc.rename(columns={'y_true': 'msc_true', 'y_pred': 'msc_pred'})
 
     # Merge and compute anomalies
@@ -332,8 +329,8 @@ def aggregate_anomaly(df, mask=None, min_contribution=2,
     return result[['env', 'time', 'y_true', 'y_pred']]
 
 
-def aggregate_iav(df, mask=None, min_contribution=0.5,
-                  min_contribution_hour_to_day=0.5):
+def aggregate_iav(df, mask=None, min_contribution=183,
+                  min_contribution_hour_to_day=12):
     """
     Compute inter-annual variability (IAV).
 
@@ -363,6 +360,26 @@ def aggregate_iav(df, mask=None, min_contribution=0.5,
     return yearly
 
 
+def aggregate_spatial(df, mask=None):
+    """
+    Compute spatial (site) means.
+
+    Calculate the mean across all time for each site,
+    to get the site level average predictions.
+
+    Args:
+        df: DataFrame with y_true, y_pred, env, time columns
+        mask: Optional boolean mask for valid data
+
+    Returns:
+        DataFrame with one row per timestamp, containing the spatial mean values
+    """
+    df, mask = _ensure_daily(df, mask)
+    yearly = aggregate_yearly(df, mask=mask, min_contribution=1)
+    yearly = yearly.groupby('env').mean().reset_index()
+    return yearly
+
+
 # =============================================================================
 # Registry
 # =============================================================================
@@ -374,5 +391,6 @@ AGGREGATIONS = {
     'monthly': aggregate_monthly,
     'seasonal': aggregate_seasonal,
     'anom': aggregate_anomaly,
-    'iav': aggregate_iav
+    'iav': aggregate_iav,
+    'spatial': aggregate_spatial,
 }

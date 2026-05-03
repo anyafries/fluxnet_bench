@@ -16,10 +16,21 @@ PLOTS_DIR = 'results/plots'
 SCALES = ['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav']
 
 # Model ordering: lr first, xgb second, then alphabetically
-MODEL_ORDER = ['lr', 'xgb']
+MODEL_ORDER = ['xgb', 'lightgbm', 'mlp', 
+               'gdro', 'coral', 'mmd', 
+            #    'maxrm_mse', 'maxrm_regret', 
+               'lr', 'robust-lr', 'ridge',  'constant']
+color_palette = sns.color_palette("tab10", n_colors=len(MODEL_ORDER))
+MODEL_COLORS = {model: color_palette[i] for i, model in enumerate(MODEL_ORDER)}
 
 # Setting ordering: time-split, spatial-easy, spatial-hard
-SETTINGS_ORDER = ['time-split', 'spatial-easy', 'spatial-hard']
+SETTINGS_ORDER = ['time-split', 'spatial-easy40', 'TA40',
+                  'spatial-easy', 'spatial-hard', 
+                  'LST', 'TA', 'VPD', 
+                  'PFT_CRO', 'PFT_ENF', 'PFT_GRA', 'PFT_WET', 
+                  'forest', 'grass-savanna', 'schrub-savanna',
+                  'europe', 'rest-of-world',
+                  ] + [f'hard-{i}' for i in range(1, 6)] + ['time-space']
 
 # Metrics where higher is better (affects sorting direction and labels)
 HIGHER_IS_BETTER = {'nse', 'r2_score', 'pearson_corr'}
@@ -46,7 +57,8 @@ def is_higher_better(metric):
     return metric.lower() in HIGHER_IS_BETTER
 
 
-def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', legend=False):
+def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', 
+                           legend=False, ymax=None):
     """
     Plot metric across settings for one scale (single subplot).
 
@@ -70,17 +82,21 @@ def plot_metric_by_setting(results, target, metric, scale, ax, agg='median', leg
         .reset_index()
     )
 
-    hue_order = get_ordered_models(data['model'].unique())
-    data['setting'] = pd.Categorical(data['setting'], categories=SETTINGS_ORDER, ordered=True)
+    # hue_order = get_ordered_models(data['model'].unique())
+    categories = SETTINGS_ORDER + [s for s in np.sort(data['setting'].unique()) if s not in SETTINGS_ORDER]
+    data['setting'] = pd.Categorical(data['setting'], categories=categories, ordered=True)
     data = data.sort_values('setting')
     for i, plot_func in enumerate([sns.lineplot, sns.scatterplot]):
         plot_func(data=data, x='setting', y=metric, ax=ax, hue='model',
-                  hue_order=hue_order, legend=legend&(i==1))
+                  palette=MODEL_COLORS, legend=legend&(i==1))
 
-    ax.set_xticks(range(len(SETTINGS_ORDER)))
-    ax.set_xticklabels(SETTINGS_ORDER)
+    ax.set_xticks(range(len(categories)))
+    ax.set_xticklabels(categories, rotation=90, ha='center')
     ax.set_title(scale)
     ax.set_xlabel('')
+    ax.set_ylim(bottom=0)
+    if ymax is not None:
+        ax.set_ylim(top=ymax)
 
 
 def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_DIR):
@@ -96,24 +112,32 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
     """
     os.makedirs(outdir, exist_ok=True)
 
-    fig, axes = plt.subplots(4, 2, figsize=(6, 8))
+    fig, axes = plt.subplots(4, 2, figsize=(8, 8), sharex=True)
     axes = axes.flatten()
 
     for i, scale in enumerate(SCALES):
         plot_metric_by_setting(results, target, metric, scale, axes[i],
-                               agg=agg, legend=(i == 0))
-    axes[0].legend(title='')
+                               agg=agg, legend=(i == len(SCALES) - 1), 
+                               ymax=1 if metric.lower() == 'nse' else None)
+    axes[len(SCALES) - 1].legend(title='')
+
+    # Hide any unused subplots
+    for j in range(i + 1, len(axes)):
+        axes[j].axis('off')
 
     fig.suptitle(f"{target}")
     plt.tight_layout()
 
+    if callable(agg):
+        agg = 'quantile'
     outfile = os.path.join(outdir, f"{agg}_{target}_{metric}_by_scale.png")
     plt.savefig(outfile, dpi=150)
     plt.close(fig)
     logger.info(f"Saved: {outfile}")
 
 
-def plot_cdf(results, target, metric, scale, setting, ax):
+def plot_cdf(results, target, metric, scale, setting, ax, xmax=None,
+             linestyle='-', linewidth=2):
     """
     Plot CDF of metric for one target/scale/setting (single subplot).
 
@@ -151,13 +175,15 @@ def plot_cdf(results, target, metric, scale, setting, ax):
             # Sort ascending for lower-is-better metrics
             sorted_values = np.sort(values)
 
-        ax.plot(sorted_values, np.linspace(0, 1, len(sorted_values)), label=model_name)
+        ax.plot(sorted_values, np.linspace(0, 1, len(sorted_values)), 
+                label=model_name, color=MODEL_COLORS.get(model_name, 'gray'),
+                linestyle=linestyle, linewidth=linewidth)
 
     ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.3)
     ax.set_xlabel(f'{metric.upper()} (x)')
 
-    env = "sites" if setting.startswith('spatial') else "site-years"
+    env = "sites-years" if setting == 'time-split' else "sites"
     if higher_better:
         ax.set_ylabel(f'% of {env} with {metric.upper()} >= x')
     else:
@@ -165,6 +191,8 @@ def plot_cdf(results, target, metric, scale, setting, ax):
 
     if metric.lower() == 'nse':
         ax.set_xlim(-0.5, 1.0)
+    # else:
+    #     ax.set_xlim(0, xmax)
 
     ax.set_title(setting)
     ax.legend()
@@ -211,7 +239,8 @@ def plot_quantile(results, target, metric, scale, setting, ax, y_limit=None):
             sorted_values = np.sort(values)
 
         percentiles = np.linspace(0, 1, len(sorted_values))
-        ax.plot(percentiles, sorted_values, label=model_name)
+        ax.plot(percentiles, sorted_values, label=model_name,
+                color=MODEL_COLORS.get(model_name, 'gray'))
 
     ax.xaxis.set_major_locator(ticker.MultipleLocator(0.1))
     ax.grid(True, which='both', linestyle='--', linewidth=0.5)
@@ -257,13 +286,19 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
         return
 
     n_settings = len(settings)
-    fig, axes = plt.subplots(1, n_settings, figsize=(4 * n_settings, 4), sharey=True)
+    fig, axes = plt.subplots(1, n_settings, figsize=(4 * n_settings, 4), 
+                             sharey=True, sharex=True)
 
     if n_settings == 1:
         axes = [axes]
 
+    xmax = results[
+        (results['target'] == target) &
+        (results['scale'] == scale)
+    ][metric].max()
+
     for i, setting in enumerate(settings):
-        plot_cdf(results, target, metric, scale, setting, axes[i])
+        plot_cdf(results, target, metric, scale, setting, axes[i], xmax=xmax)
 
     fig.suptitle(f"{target} ({scale})")
     plt.tight_layout()
@@ -282,10 +317,12 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
 # TODO: make more modular/general -> only for one scale for example
 # TODO: handle ties in medal rankings
 # https://pandas.pydata.org/docs/user_guide/style.html
+import pandas as pd
+
 def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     # --- 1. Data Preparation ---
     # Filter by target
-    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
+    subset = df[(df['target'] == target)]
     
     # Pivot: Index=(Setting, Scale), Cols=Model, Values=Metric
     settings = get_ordered_settings(subset['setting'].unique())
@@ -304,8 +341,10 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     pivot_df.columns.name = None # Clear the 'model' column heading label
 
     # --- Calculate Medals and points ---
-    # Rank models across each row (1 is lowest/best)
-    ranks = pivot_df.rank(axis=1, method='first')
+    # Use method='min' for standard competition ranking (1, 1, 3) 
+    # Use method='dense' if you want consecutive ranking (1, 1, 2)
+    ranks = pivot_df.rank(axis=1, method='min')
+    
     gold = (ranks == 1).sum()
     silver = (ranks == 2).sum()
     bronze = (ranks == 3).sum()
@@ -325,20 +364,26 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     
     # --- 2. Color Logic Calculation ---
     def highlight_medals(row):
+        # Skip styling for the summary rows
         if row.name[0] == 'Summary':
             return ['font-weight: bold; background-color: #f8f9fa'] * len(row)
         
         styles = [''] * len(row)
-        # Drop NaNs and sort to find the top 3 models per row
-        valid_vals = row.dropna().sort_values(ascending=True)
+        
+        # Rank the row using the exact same tie-breaking logic as the points
+        row_ranks = row.rank(method='min')
+        
         colors = {
-            0: 'background-color: #FFD700', # Gold
-            1: 'background-color: #C0C0C0', # Silver
-            2: 'background-color: #CD7F32'  # Bronze
+            1: 'background-color: #FFD700', # Gold
+            2: 'background-color: #C0C0C0', # Silver
+            3: 'background-color: #CD7F32'  # Bronze
         }
-        for rank in range(min(3, len(valid_vals))):
-            loc = row.index.get_loc(valid_vals.index[rank])
-            styles[loc] = colors[rank]
+        
+        # Apply colors based on the computed rank
+        for i, rank in enumerate(row_ranks):
+            if rank in colors:
+                styles[i] = colors[rank]
+                
         return styles
 
     # --- 3. Apply Styles and Export to HTML ---
@@ -378,13 +423,12 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
         pivot_df.style
         .format(precision=2, na_rep="-")
         .set_table_styles([table, cells, body_cells, heading1, heading2, heading_cols])
-        .apply(highlight_medals, axis=1) # Changed to axis=1 to evaluate medals across rows
+        .apply(highlight_medals, axis=1)
     )
 
     # Add solid lines between setting groups (horizontal borders)
     for i in range(len(pivot_df) - 1):
         if pivot_df.index[i][0] != pivot_df.index[i+1][0]:
-            # thickness = "2px" if pivot_df.index[i][0] == "Summary" else "1px"
             thickness = "1px"
             styler.set_table_styles({
                 pivot_df.index[i]: [
@@ -418,3 +462,111 @@ def create_leaderboard(df, target, metric, filename, aggfunc='median'):
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(html_output)
     print(f"Transposed styled HTML table saved to {filename}")
+
+
+def get_hex_color(val, min_val, max_val, lower_is_better=True):
+    """Interpolates a value into a Red-White-Green Hex color string."""
+    if pd.isna(val) or max_val == min_val:
+        return "FFFFFF" # Default white for NaNs or completely tied columns
+        
+    # Normalize between 0 (worst) and 1 (best)
+    if lower_is_better:
+        ratio = (max_val - val) / (max_val - min_val)
+    else:
+        ratio = (val - min_val) / (max_val - min_val)
+        
+    # Standard Excel-like Red, White, Green
+    # Red: (248, 105, 107), White: (255, 255, 255), Green: (99, 190, 123)
+    if ratio < 0.5:
+        # Interpolate Red to White
+        t = ratio / 0.5
+        r = int(248 + t * (255 - 248))
+        g = int(105 + t * (255 - 105))
+        b = int(107 + t * (255 - 107))
+    else:
+        # Interpolate White to Green
+        t = (ratio - 0.5) / 0.5
+        r = int(255 + t * (99 - 255))
+        g = int(255 + t * (190 - 255))
+        b = int(255 + t * (123 - 255))
+        
+    return f"{r:02X}{g:02X}{b:02X}"
+
+
+def format_sig_figs(val, n=2):
+    """Formats a number to n significant figures."""
+    if pd.isna(val) or val == 0:
+        return str(val)
+    # This handles scientific notation and standard float formatting automatically
+    return f"{val:.{n}g}"
+
+
+def get_hex_relative_color(val, best_val, rel_threshold=0.2, lower_is_better=True):
+    """
+    Colors values based on their distance from the best value in the column.
+    Green = Best
+    White = Best + (Best * rel_threshold) [for lower_is_better]
+    """
+    if pd.isna(val) or pd.isna(best_val):
+        return "FFFFFF"
+
+    # Define the 'Limit' where the color fades to white
+    if lower_is_better:
+        # e.g., Best is 0.1, threshold is 1.0 (double). Limit is 0.2.
+        limit = best_val * (1 + rel_threshold)
+        if val <= best_val: ratio = 1.0
+        elif val >= limit: ratio = 0.0
+        else:
+            # Linear interpolation between best and limit
+            ratio = (limit - val) / (limit - best_val)
+    else:
+        # e.g., Best is 0.8, threshold is 0.5 (half). Limit is 0.4.
+        limit = best_val * (1 - rel_threshold)
+        if val >= best_val: ratio = 1.0
+        elif val <= limit: ratio = 0.0
+        else:
+            ratio = (val - limit) / (best_val - limit)
+
+    # Gradient: Green (99, 190, 123) to White (255, 255, 255)
+    r = int(255 - (ratio * (255 - 99)))
+    g = int(255 - (ratio * (255 - 190)))
+    b = int(255 - (ratio * (255 - 123)))
+    
+    return f"{r:02X}{g:02X}{b:02X}"
+
+
+def get_weighted_skill_scores(df, baseline_model='constant'):
+    """
+    Computes Continuous Skill Scores relative to a baseline.
+    Returns:
+      - skill_scores_df: The cell-by-cell skill scores.
+      - overall_scores: A Pandas Series of the final weighted average per model.
+    """
+    SCALE_WEIGHTS = {
+        'hourly': 1.0, 'daily': 1.0, 'weekly': 1.0, 'monthly': 1.0,
+        'seasonal': 1.0, 'anom': 1.0, 'iav': 1.0, 'site-mean': 1.0,
+    }
+
+    if baseline_model not in df.index:
+        print(f"Warning: Baseline '{baseline_model}' not found.")
+        return None, None
+        
+    baseline_errors = df.loc[baseline_model]
+    
+    # 1 - (Model_Error / Baseline_Error)
+    skill_scores_df = 1 - (df / baseline_errors)
+    
+    aligned_weights = pd.Series(index=df.columns, dtype=float)
+    for col in df.columns:
+        scale_name = col[-1] if isinstance(col, tuple) else col
+        aligned_weights[col] = SCALE_WEIGHTS.get(scale_name, 1.0) 
+        
+    def compute_weighted_mean(row):
+        mask = row.notna() & aligned_weights.notna()
+        if not mask.any():
+            return np.nan
+        return np.average(row[mask], weights=aligned_weights[mask])
+
+    overall_scores = skill_scores_df.apply(compute_weighted_mean, axis=1)
+    
+    return skill_scores_df, overall_scores

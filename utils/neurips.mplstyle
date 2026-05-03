@@ -1,0 +1,24 @@
+# NeurIPS Matplotlib Style File
+
+# Figure size 
+# NeurIPS text block is exactly 5.5 inches wide. 
+# 2.75 fits two plots side-by-side perfectly. Use 5.5 for a full-width plot.
+figure.figsize: 2.75, 2.25 
+
+# Fonts
+# NeurIPS strictly prefers Times New Roman
+font.family: serif
+font.serif: Times New Roman, Times
+
+# Font Sizes (NeurIPS main text is 10pt, so 8-10pt is ideal for plots)
+font.size: 9
+axes.titlesize: 10
+axes.labelsize: 9
+xtick.labelsize: 8
+ytick.labelsize: 8
+legend.fontsize: 8
+figure.titlesize: 10
+
+# LaTeX integration
+text.usetex: True
+text.latex.preamble: \usepackage{mathptmx}\usepackage{amsmath}\usepackage{amssymb}\usepackage{siunitx}[=v2]

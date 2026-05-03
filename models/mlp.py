@@ -23,6 +23,7 @@ class MLP:
         self.batch_size = batch_size
         self.early_stopping_rounds = early_stopping_rounds
         self.model = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def _build_model(self, input_dim):
         """Build the neural network architecture."""
@@ -40,18 +41,20 @@ class MLP:
 
     def fit(self, X, y, eval_set=None, envs=None):
         self.model = self._build_model(X.shape[1])
+        self.model.to(self.device)
 
-        dataset = TensorDataset(
-            torch.tensor(X, dtype=torch.float32),
-            torch.tensor(y, dtype=torch.float32).view(-1, 1)
-        )
+        assert isinstance(X, torch.Tensor), "X must be a torch.Tensor"
+        assert isinstance(y, torch.Tensor), "y must be a torch.Tensor"
+        dataset = TensorDataset(X, y)
         loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         use_val = eval_set is not None
         if use_val:
-            X_val_t = torch.tensor(eval_set[0][0], dtype=torch.float32)
-            y_val_t = torch.tensor(eval_set[0][1], dtype=torch.float32).view(-1, 1)
+            X_val_t = eval_set[0][0]
+            y_val_t = eval_set[0][1]
+            assert isinstance(X_val_t, torch.Tensor), "Validation X must be a torch.Tensor"
+            assert isinstance(y_val_t, torch.Tensor), "Validation y must be a torch.Tensor"
             best_val_loss = float('inf')
             best_weights = None
             rounds_without_improvement = 0
@@ -60,6 +63,7 @@ class MLP:
         for _ in pbar:
             self.model.train()
             for X_batch, y_batch in loader:
+                X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
                 optimizer.zero_grad()
                 loss = F.mse_loss(self.model(X_batch), y_batch)
                 loss.backward()
@@ -68,6 +72,7 @@ class MLP:
             if use_val:
                 self.model.eval()
                 with torch.no_grad():
+                    X_val_t, y_val_t = X_val_t.to(self.device), y_val_t.to(self.device)
                     val_loss = F.mse_loss(self.model(X_val_t), y_val_t).item()
                 pbar.set_postfix(val_loss=f"{val_loss:.4f}")
                 if val_loss < best_val_loss:
@@ -96,6 +101,7 @@ class MLP:
             Predictions array of shape (n_samples,)
         """
         self.model.eval()
+        assert isinstance(X, torch.Tensor), "X must be a torch.Tensor"
         with torch.no_grad():
-            X_t = torch.tensor(X, dtype=torch.float32)
-            return self.model(X_t).numpy().ravel()
+            X_t = X.to(self.device)
+            return self.model(X_t).cpu().numpy().ravel()
