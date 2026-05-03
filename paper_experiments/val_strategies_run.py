@@ -14,7 +14,6 @@ from utils.utils import setup_logging, get_metrics_path
 
 logger = setup_logging(__name__)
 
-ALL_SETTINGS = ['time-split', 'spatial-easy40', 'TA40']
 ALL_TARGETS = ['GPP', 'NEE', 'ET']
 ALL_VAL_SPLITS = ['iid', 'temporal', 'oracle']
 
@@ -25,8 +24,6 @@ if __name__ == "__main__":
                         help="Path to the data directory")
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
-    parser.add_argument("--setting", type=str,
-                        default='hard-2', help="Experiment setting")
     parser.add_argument("--target", type=str, 
                         choices=['GPP', 'NEE', 'ET', 'all'],
                         default='ET', help="Target variable to predict")
@@ -40,7 +37,7 @@ if __name__ == "__main__":
     model_name = args.model_name
 
     # Determine which settings and targets to run
-    settings = ALL_SETTINGS if args.setting == 'all' else [args.setting]
+    settings = ['spatial-easy40']
     targets = ALL_TARGETS if args.target == 'all' else [args.target]
     val_splits = ALL_VAL_SPLITS if args.val_split == 'all' else [args.val_split]
 
