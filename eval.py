@@ -79,6 +79,8 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None,
         if metrics_df is not None:
             if scales and 'scale' in metrics_df.columns:
                 metrics_df = metrics_df[metrics_df['scale'].isin(scales)]
+            drop_scales = ['daily', 'monthly']
+            metrics_df = metrics_df[~metrics_df['scale'].isin(drop_scales)]
             all_results.append(metrics_df)
 
     if all_results:
@@ -98,7 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--plots_dir", type=str, default='results/plots',
                         help="Directory to save plots (default: results/plots)")
     parser.add_argument("--setting", type=str, default=None,
-                        help="Filter by setting (e.g., 'spatial-easy')")
+                        help="Filter by setting (e.g., 'spatial-easy40')")
     parser.add_argument("--target", type=str, default=None,
                         help="Filter by target (e.g., 'GPP')")
     parser.add_argument("--model", type=str, default=None,
@@ -134,6 +136,7 @@ if __name__ == "__main__":
         rerun=args.rerun,
     )
     results = results[results['setting'].isin(display_names.keys())]  
+    results['scale'] = results['scale'].replace({'spatial': 'site-mean'})
 
     # Generate plots for all targets
     for target in results['target'].unique():
