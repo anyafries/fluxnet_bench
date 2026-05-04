@@ -79,18 +79,18 @@ Training performs random hyperparameter search and selects the best model under 
 
 ### Available models
 
-| Name | Description |
-|------|-------------|
-| `lr` | Linear Regression |
-| `ridge` | Ridge Regression |
-| `robust-lr` | Huber Regressor |
-| `xgb` | XGBoost |
-| `lightgbm` | LightGBM |
-| `constant` | Dummy mean predictor |
-| `mlp` | Multi-layer Perceptron (PyTorch) |
-| `gdro` | Group DRO — minimizes worst-group loss (PyTorch) |
-| `coral` | CORAL domain generalization (PyTorch) |
-| `mmd` | MMD domain generalization (PyTorch) |
+| Name | Description | Extra install |
+|------|-------------|---------------|
+| `lr` | Linear Regression | — |
+| `ridge` | Ridge Regression | — |
+| `robust-lr` | Huber Regressor | — |
+| `xgb` | XGBoost | — |
+| `lightgbm` | LightGBM | `pip install lightgbm` |
+| `constant` | Dummy mean predictor | — |
+| `mlp` | Multi-layer Perceptron (PyTorch) | — |
+| `gdro` | Group DRO — minimizes worst-group loss (PyTorch) | — |
+| `coral` | CORAL domain generalization (PyTorch) | — |
+| `mmd` | MMD domain generalization (PyTorch) | — |
 
 ---
 
