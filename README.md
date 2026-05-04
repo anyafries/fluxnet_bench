@@ -1,4 +1,4 @@
-# FLUXNET Benchmark for Domain Generalization
+# Fluxtrapolation: A benchmark on extrapolating ecosystem fluxes
 
 A benchmark for evaluating ML models under distribution shift using FLUXNET eddy covariance data from 207 sites worldwide. Models are trained to predict ecosystem carbon and water fluxes and evaluated on held-out sites or time periods to measure robustness to covariate shift.
 
