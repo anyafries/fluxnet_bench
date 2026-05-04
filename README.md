@@ -12,8 +12,8 @@ A benchmark for evaluating ML models under distribution shift using FLUXNET eddy
 ## Setup
 
 ```bash
-python -m venv fluxnet_bench_venv
-source fluxnet_bench_venv/bin/activate
+python -m venv venv_fn
+source venv_fn/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -37,10 +37,25 @@ Each site is stored as a CSV in `data/sites/`. The benchmark uses **13 covariate
 |  | `time-split` | `spatial-easy40` | `TA40` |
 |--|---|---|---|
 | **Description** | Train on years before 2018, validate on 2018, test on years after 2018 | Hold out 40 predefined test sites; train/validate on the rest | Hold out 25 warmer southern sites; train/validate on northern sites |
-| **Tests** | Temporal generalization — can a model trained on earlier years predict future flux dynamics? | Spatial generalization to new ecosystems across climate types | Robustness to a climate gradient — training and test sites differ systematically in temperature regime |
 | **Diagram** | ![time-split](figures/time_split.png) | ![spatial-easy](figures/site_split_space.png) | ![ta-split](figures/site_split_ta.png) |
+| **Tests** | Temporal generalization — can a model trained on earlier years predict future flux dynamics? | Spatial generalization to new ecosystems across climate types | Robustness to a climate gradient — training and test sites differ systematically in temperature regime |
+
 
 Run `--setting all` to run all three (default).
+
+---
+
+## The goal
+
+Once you have trained a model, we wish to evaluate it over the median and 90th percentile of held-out sites and site-years, along with several temporal aggregates. For example, we can look at ET and the 90th percentiles of RMSE. Good models do not degrade badly for any of the metrics.
+
+![q90_table](figures/q90_table.png)
+
+In more detail, one can look at the CDFs for an (extapolation scenario, aggregation) pair. For example for RMSE of weekly ET in the temperature-based extrapolation, we see that models whcih appear more similar at the median diverge further in the tails.
+
+<p align="center">
+  <img src="figures/cdf_ET_rmse_weekly.png " alt="cdf" width="30%">
+</p>
 
 ---
 
@@ -96,7 +111,7 @@ python eval.py --target GPP --val_strategy mean
 | `--val_strategy` | `mean`, `max`, `discrepancy` | `mean` |
 | `--rerun` | flag | off | Recompute metrics from saved predictions |
 
-**Metrics** are reported at 7 temporal scales: hourly, daily, weekly, monthly, seasonal (mean seasonal cycle), anomalies, and inter-annual variability.
+**Metrics** are reported at 6 temporal scales: hourly, weekly seasonal (mean seasonal cycle), anomalies, inter-annual variability, and site mean. The leaderboard iand CDFs are, respectively, at `results/plots/{strategy}/leaderboard_{target}.html` and `results/plots/{strategy}/cdf_{target}_{metric}_{scale}.png`.
 
 **Outputs** are saved to `results/`:
 
@@ -110,7 +125,7 @@ results/
     └── discrepancy/
 ```
 
-File naming follows `{setting}_{target}_{model}_val_{strategy}*`. The interactive leaderboard is at `results/plots/{strategy}/medals_{target}.html`.
+File naming follows `{setting}_{target}_{model}_val_{strategy}*`. 
 
 ---
 
