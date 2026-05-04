@@ -89,8 +89,8 @@ Training performs random hyperparameter search and selects the best model under 
 | `constant` | Dummy mean predictor |
 | `mlp` | Multi-layer Perceptron (PyTorch) |
 | `gdro` | Group DRO — minimizes worst-group loss (PyTorch) |
-| `coral` | CORAL domain adaptation (PyTorch) |
-| `mmd` | MMD domain adaptation (PyTorch) |
+| `coral` | CORAL domain generalization (PyTorch) |
+| `mmd` | MMD domain generalization (PyTorch) |
 
 ---
 
