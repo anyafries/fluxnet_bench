@@ -8,14 +8,21 @@ Usage:
     python eval.py --setting spatial-easy --target GPP
 """
 
+import os
 import pandas as pd
 
 from dataloader import load_predictions
 from utils.eval_utils import load_metrics, compute_and_save_metrics
-from utils.plots import plot_metric_grid, plot_cdf_grid, create_leaderboard
+from utils.plots import plot_metric_grid, plot_cdf_grid, create_html_leaderboard
 from utils.utils import setup_logging, find_available_experiments
 
 logger = setup_logging(__name__)
+
+display_names = {
+    "time-split": "temporal",
+    "spatial-easy40": "spatial",
+    "TA40": "temperature"
+}
 
 def get_metrics(setting, target, model_name, val_strategy, rerun=False):
     """Get metrics for an experiment, computing if necessary."""
@@ -110,7 +117,7 @@ if __name__ == "__main__":
 
     # Parse filters
     results_dir = args.results_dir
-    plots_dir = args.plots_dir
+    plots_dir = os.path.join(args.plots_dir, args.val_strategy)
     settings = [args.setting] if args.setting else None
     targets = [args.target] if args.target else None
     models = [args.model] if args.model else None
@@ -126,6 +133,7 @@ if __name__ == "__main__":
         val_strategy=args.val_strategy,
         rerun=args.rerun,
     )
+    results = results[results['setting'].isin(display_names.keys())]  
 
     # Generate plots for all targets
     for target in results['target'].unique():
@@ -133,11 +141,17 @@ if __name__ == "__main__":
         plot_metric_grid(results, target, 
                         agg=lambda x: x.quantile(0.9),
                         outdir=plots_dir, metric=metric)
-        plot_cdf_grid(results, target, scale='hourly', metric=metric, outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='daily', metric=metric, outdir=plots_dir)
-        plot_cdf_grid(results, target, scale='weekly', metric=metric, outdir=plots_dir)
-        create_leaderboard(results, target, metric='rmse',
-                           filename=f'{plots_dir}/medals_{target}.html')
-        create_leaderboard(results, target, metric='rmse', 
-                           agg=lambda x: x.quantile(0.9),
-                           filename=f'{plots_dir}/medals_max_{target}.html')
+        plot_cdf_grid(results, target, scale='hourly', metric=metric, 
+                      settings_names=display_names, outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='daily', metric=metric, 
+                      settings_names=display_names, outdir=plots_dir)
+        plot_cdf_grid(results, target, scale='weekly', metric=metric, 
+                      settings_names=display_names, outdir=plots_dir)
+        create_html_leaderboard(results, target, metric='rmse',
+                                aggfunc='median',
+                                settings_names=display_names,
+                                filename=f'{plots_dir}/leaderboard_{target}.html')
+        create_html_leaderboard(results, target, metric='rmse', 
+                                aggfunc=lambda x: x.quantile(0.9),
+                                settings_names=display_names,
+                                filename=f'{plots_dir}/leaderboard_q90_{target}.html')
