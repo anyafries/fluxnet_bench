@@ -6,7 +6,7 @@ Implements two risk criteria on top of adaXT's RandomForest:
   - 'regret': MaxRM-Regret — minimizes worst-group regret (loss relative to
               per-environment ERM oracle)
 
-Reference implementation: https://github.com/francescofreni/nldg/tree/main
+Reference implementation: [removed for anonymous review]
 """
 
 import numpy as np
