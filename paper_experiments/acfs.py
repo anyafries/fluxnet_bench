@@ -9,10 +9,8 @@ from statsmodels.graphics.tsaplots import plot_acf
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dataloader import load_data
 
-plt.style.use('/Users/anfries/Documents/fluxnet_bench/utils/neurips.mplstyle')
-
-# Load your Fluxnet CSV
-df = load_data('/Users/anfries/Documents/fluxnet_bench/data')
+plt.style.use('utils/neurips.mplstyle')
+df = load_data('data')
 target = 'ET'
 
 for site in ['DE-Hai', "AU-Cum", "AU-GWW", "CZ-RAJ"]:
@@ -54,6 +52,6 @@ for site in ['DE-Hai', "AU-Cum", "AU-GWW", "CZ-RAJ"]:
         axes[j, 0].set_ylabel(f'{target}', fontsize=10)
 
     plt.tight_layout()
-    plt.savefig(f'/Users/anfries/Documents/fluxnet_bench/paper_experiments/plots/acf_{site}.png', bbox_inches='tight', dpi=300)
+    plt.savefig(f'paper_experiments/plots/acf_{site}.png', bbox_inches='tight', dpi=300)
     print(f"Saved ACF plot for {site}")
     plt.close()

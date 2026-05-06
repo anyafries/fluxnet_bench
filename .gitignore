@@ -5,6 +5,7 @@ fluxnet_bench_venv/*
 
 # big folders
 data/*
+!data/sites_with_2018.csv
 data_cleaned/*
 results/*
 !results/plots/

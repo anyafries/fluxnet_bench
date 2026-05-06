@@ -12,9 +12,9 @@ sf_use_s2(TRUE)
 
 SPATIAL_SPLIT <- c('US-Tw1', 'DE-Hai', 'US-Seg', 'US-Sne', 'US-Tw4', 'US-xDL', 'UK-AMo', 'AU-Dry', 'US-CGG', 'FR-Bil', 'US-Rpf', 'DK-Skj', 'RU-Fy2', 'DE-Rns', 'US-Tw3', 'RU-Fyo', 'US-Snf', 'CH-Cha', 'AR-CCg', 'CL-SDF', 'DE-Gri', 'FR-Tou', 'AU-Whr', 'AU-GWW', 'US-RGo', 'IT-BCi', 'ES-Abr', 'SE-Nor', 'DE-Hzd', 'US-CS2', 'US-StJ', 'CA-TP3', 'BE-Dor', 'US-xWD', 'US-Syv', 'DE-RuR', 'CZ-BK1', 'BE-Maa', 'BE-Vie', 'FI-Var')
 TA_SPLIT <- c('AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst', 'US-Wkg', 'IT-BCi', 'US-Jo2', 'IT-Cp2', 'US-RGo', 'ES-Abr', 'US-NC4', 'ES-Agu', 'US-Akn', 'US-xJR', 'ES-Pdu', 'US-Ton', 'ES-LM2', 'IT-Noe', 'ES-LM1')
-DATA_PATH <- '/Users/anfries/Documents/fluxnet_bench/data'
-PLOT_PATH <- '/Users/anfries/Documents/fluxnet_bench/paper_experiments/plots'
-DROP_COLS = c('PFT_BSV', 'PFT_SNO', 'PFT_URB')
+DATA_PATH <- 'fluxnet_bench/data'
+PLOT_PATH <- 'paper_experiments/plots'
+DROP_COLS <- c('PFT_BSV', 'PFT_SNO', 'PFT_URB')
 
 load_data <- function(path) {
   # 1. Handle paths
@@ -54,8 +54,7 @@ df[df$qc_mask == 0, cols_to_NA] <- NA
 colMeans(is.na(df))
 
 
-# Define Custom Colors (Hex codes for precision)
-# Using alpha for transparency (26 is ~15%, 4D is ~30%)
+# Define Custom Colors 
 col_val <- "#CCCCFF" # Periwinkle
 col_train   <- "#E2F0CB" # Gentle Lime
 col_test  <- "#A2C2E8" # Soft Blue
@@ -65,11 +64,6 @@ col_val_dark <- "mediumpurple4" # Darker Periwinkle
 col_train_dark   <- "olivedrab"      # Darker Olive
 col_test_dark  <- "dodgerblue4"    # Darker Blue
 col_test_dark <- "#FF5200"
-
-
-
-
-
 
 # --------------- Example Time Series --------------------
 df$date <- as.Date(df$time)
@@ -85,17 +79,12 @@ sites_with_5_years <- df_daily %>%
   pull(site_id)
 
 run_plot <- TRUE
-CHOSEN_SITES <- c("CZ-RAJ", "AU-GWW") #unique(df$site_id)[c(9,50,52)] #6,9,10 ,50,9, 39=50,52,56,66,67
+CHOSEN_SITES <- c("CZ-RAJ", "AU-GWW") 
 if (run_plot) {
   # Define dates
   d_start <- as.Date("2015-01-01")
   cut1    <- as.Date("2019-01-01")
   d_end   <- as.Date("2023-01-01")
-  
-  # only keep sites with data in 
-  # 1. Setup layout and margins
-  # oma[1] is bottom, oma[2] is left (room for site names)
-  # par(mfrow=c(3,1), mar=c(0, 4, 0, 2), oma=c(5, 6, 4, 2))
   
   for (i in 1:3) {
     if (i < 3) {
@@ -106,10 +95,10 @@ if (run_plot) {
     }
     
     png(paste0(PLOT_PATH, "/time_split_", site,".png"), 
-        width = 6,           # Width in inches
-        height = 2.5,          # Height in inches
+        width = 6,
+        height = 2.5,   
         units = "in", 
-        res = 400)            # 300 DPI is standard for high-quality publication
+        res = 400) 
 
     # 2. Base Plot
     plot(df_site$date, df_site$ET, type='l', 
@@ -210,7 +199,6 @@ df_st <- df_lat_long |>
   st_as_sf(coords = c("tower_lon", "tower_lat"), crs = "OGC:CRS84")
 fluxnet_locations <- st_geometry(df_st)
 
-# try out different projections (ggplot)
 # proj <- "+proj=laea +y_0=0 +lon_0=155 +lat_0=-90"
 # proj <- "+proj=ortho +lon_0=0 +lat_0=90"
 # proj <- "+proj=ortho +lon_0=0 +lat_0=-90"
@@ -237,7 +225,7 @@ gg <- ggplot() +
           shape = 24, size = 3.5, 
           fill = "red", color = "white", stroke = 0.5) +
   
-  # 5. Clean theme (background is now white/transparent outside the globe)
+  # 5. Clean theme 
   theme_void() + 
   theme(
     legend.position = "bottom",
@@ -314,12 +302,12 @@ for (i in c("space", "ta")) {
     #   # text = element_text(family = "serif", size = 16),
     #   legend.text = element_text(family = "serif", size = 40),
     #   # legend.title = element_text(family = "serif", face = "bold", size = 10),
-    #   legend.position = c(0.17, 0.45), 
-    #   
+    #   legend.position = c(0.17, 0.45),
+    # 
     #   # Increase font sizes here
     #   # text = element_text(family = "serif", size = 16),
     #   # legend.text = element_text(family = "serif", size = 18),
-    #   
+    # 
     #   # This adds a bit of vertical space between "TRAIN" and "TEST"
     #   # legend.spacing.y = unit(0.5, 'cm'),
     #   legend.key.size = unit(1.5, "lines")
@@ -334,6 +322,8 @@ for (i in c("space", "ta")) {
   ggsave(paste0(PLOT_PATH, "/site_split_", i, ".png"),
          gg, bg = "transparent", width = 10, height = 6, dpi = 300)
 }
+
+
 
 # --------------- Plot the sites of the time series example --------------------
 
