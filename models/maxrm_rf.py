@@ -75,7 +75,7 @@ class MaxRM_RF(RandomForest):
     Args:
         risk (str): 'mse' for MaxRM-MSE, 'regret' for MaxRM-Regret.
 
-    Reference: https://github.com/francescofreni/nldg/tree/main
+    Reference: [removed for anonymous review]
     """
 
     def __init__(self, n_estimators=100, seed=42,
