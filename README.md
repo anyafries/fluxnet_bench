@@ -9,6 +9,12 @@ A benchmark for evaluating ML models under distribution shift using FLUXNET eddy
 
 ---
 
+## Leaderboard
+
+A leaderboard is available at [link removed for anonymity], with submissions accepted via pull request. See [example_leaderboard.pdf](example_leaderboard.pdf) for a preview.
+
+---
+
 ## Setup
 
 ```bash
