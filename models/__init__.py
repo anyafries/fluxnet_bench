@@ -215,7 +215,7 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
             elif model_name == 'coral':
                 params['coral_lambda'] = sample_log_uniform(1e-2, 1e1)
             elif model_name == 'mmd':
-                params['mmd_gamma'] = sample_log_uniform(1e-2, 1e1)
+                params['mmd_lambda'] = sample_log_uniform(1e-2, 1e1)
 
         random_configs.append(params)
 

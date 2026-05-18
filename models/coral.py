@@ -207,11 +207,11 @@ class MMD(_AbstractDomainAlignment):
 
     def __init__(self, hidden_dims=[128, 64], dropout=0.1, lr=1e-3,
                  n_epochs=500, batch_size=1024, early_stopping_rounds=10,
-                 mmd_gamma=1.0, num_mmd_pairs=5):
+                 mmd_lambda=1.0, num_mmd_pairs=5):
         super().__init__(hidden_dims=hidden_dims, dropout=dropout, lr=lr,
                          n_epochs=n_epochs, batch_size=batch_size,
                          early_stopping_rounds=early_stopping_rounds)
-        self.mmd_gamma = mmd_gamma
+        self.mmd_lambda = mmd_lambda
         self.num_mmd_pairs = num_mmd_pairs
         self._n_pairs = num_mmd_pairs
 
@@ -247,4 +247,4 @@ class MMD(_AbstractDomainAlignment):
                 n_pairs += 1
         if n_pairs > 0:
             penalty /= n_pairs
-        return penalty, self.mmd_gamma
+        return penalty, self.mmd_lambda
