@@ -52,7 +52,7 @@ def load_all_metrics(settings=None, targets=None, models=None, scales=None,
     """
     available = find_available_experiments()
     if not available:
-        logger.error(f"No experiments found in {results_dir}.")
+        logger.error(f"No experiments found.")
         return pd.DataFrame()
 
     # Filter by val_strategy and other criteria
@@ -86,10 +86,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Load and compare results from FLUXNET experiments"
     )
-    parser.add_argument("--results_dir", type=str, default='results/metrics',
-                        help="Directory where metrics are stored (default: results/metrics)")
-    parser.add_argument("--plots_dir", type=str, default='results/plots',
-                        help="Directory to save plots (default: results/plots)")
+    parser.add_argument("--plots_dir", type=str, default='results/plots')
     parser.add_argument("--setting", type=str, default=None,
                         help="Filter by setting (e.g., 'spatial-easy')")
     parser.add_argument("--target", type=str, default=None,
@@ -109,7 +106,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Parse filters
-    results_dir = args.results_dir
     plots_dir = args.plots_dir
     settings = [args.setting] if args.setting else None
     targets = [args.target] if args.target else None
