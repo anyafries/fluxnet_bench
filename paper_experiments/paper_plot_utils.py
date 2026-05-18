@@ -75,7 +75,8 @@ def create_latex_leaderboard(
     settings_names=None,
     rel_threshold=0.2,
     display_mode='rank',
-    baseline_model='lr'
+    baseline_model='lr',
+    main_table=True,
 ):
     # --- 1. Data Preparation (Transposed) ---
     pivot_df, overall_scores, skill_scores_df = get_pivot_df_with_scores(
@@ -151,7 +152,10 @@ def create_latex_leaderboard(
         col_format += "c"
 
         if setting == 'Summary':
-            new_cols.append(('', ''))
+            if main_table:
+                new_cols.append(('', ''))
+            else:
+                new_cols.append(("\\multirow{2}{*}{\\rotatebox{90}{Skill score $\\uparrow$}}", ''))
         else:
             new_cols.append((setting, f"\\rotatebox{{90}}{{{scale}}}"))
 
@@ -180,23 +184,19 @@ def create_latex_leaderboard(
     lines = latex_str.splitlines()
     toprule_idx = next(i for i, line in enumerate(lines) if "\\toprule" in line)
 
-    title_row = f"& \\multicolumn{{{n_data_cols}}}{{c}}{{{title}}}"
-
-    if has_summary:
-        title_row += " & \\multirow{3}{*}[-1em]{\\rotatebox{90}{Skill score $\\uparrow$}}"
-
-    title_row += r" \\"
-
-    lines.insert(toprule_idx + 1, title_row)
+    if main_table:
+        title_row = f"& \\multicolumn{{{n_data_cols}}}{{c}}{{{title}}}"
+        if has_summary:
+            title_row += " & \\multirow{3}{*}[-1em]{\\rotatebox{90}{Skill score $\\uparrow$}}"
+        title_row += r" \\"
+        lines.insert(toprule_idx + 1, title_row)
 
     latex_str = "\n".join(lines)
 
     # --- 8. Wrap in Small Font ---
     latex_str = "{\\small\n\\setlength{\\tabcolsep}{2pt}\n" + latex_str + "\n}\n"
-
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(latex_str)
-
     print(f"Publication-ready LaTeX leaderboard saved to {filename}")
 
     return latex_str
