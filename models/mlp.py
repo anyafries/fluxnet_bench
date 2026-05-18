@@ -40,13 +40,17 @@ class MLP:
         return nn.Sequential(*layers)
 
     def fit(self, X, y, eval_set=None, envs=None):
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = self._build_model(X.shape[1])
         self.model.to(self.device)
 
         assert isinstance(X, torch.Tensor), "X must be a torch.Tensor"
         assert isinstance(y, torch.Tensor), "y must be a torch.Tensor"
         dataset = TensorDataset(X, y)
-        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        _g = torch.Generator()
+        _g.manual_seed(42)
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True, generator=_g)
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         use_val = eval_set is not None

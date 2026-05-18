@@ -78,6 +78,8 @@ class _AbstractDomainAlignment(ABC):
         if envs is None:
             raise ValueError(f"{type(self).__name__} requires environment labels (envs)")
 
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self._build_model(X.shape[1])
         self.feature_extractor.to(self.device)
         self.head.to(self.device)
@@ -91,6 +93,8 @@ class _AbstractDomainAlignment(ABC):
 
         params = list(self.feature_extractor.parameters()) + list(self.head.parameters())
         optimizer = torch.optim.Adam(params, lr=self.lr)
+        _g = torch.Generator(device='cpu')
+        _g.manual_seed(42)
 
         use_val = eval_set is not None
         if use_val:
@@ -117,7 +121,7 @@ class _AbstractDomainAlignment(ABC):
                 mse = F.mse_loss(pred, y_batch)
 
                 unique_batch_envs = torch.unique(env_batch)
-                perm = torch.randperm(len(unique_batch_envs))
+                perm = torch.randperm(len(unique_batch_envs), generator=_g)
                 subset_envs = unique_batch_envs[perm[:self._n_pairs]]
 
                 penalty, lam = self._compute_penalty(feats, env_batch, subset_envs)

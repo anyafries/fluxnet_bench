@@ -98,10 +98,11 @@ class ProportionateBatchSampler:
     of each environment in every batch.
     """
 
-    def __init__(self, env_indices, batch_size, drop_last=True):
+    def __init__(self, env_indices, batch_size, drop_last=True, seed=42):
         self.env_indices = np.array(env_indices)
         self.batch_size = batch_size
         self.drop_last = drop_last
+        self._rng = np.random.default_rng(seed)
 
         # 1. Group indices by environment
         self.group_indices = {}
@@ -122,7 +123,7 @@ class ProportionateBatchSampler:
 
     def __iter__(self):
         # Shuffle indices within each group at the start of the epoch
-        shuffled_groups = {g: np.random.permutation(indices).tolist() 
+        shuffled_groups = {g: self._rng.permutation(indices).tolist()
                            for g, indices in self.group_indices.items()}
         
         # Determine how many full batches we can make before the first group runs out
@@ -142,7 +143,7 @@ class ProportionateBatchSampler:
                     batch.append(shuffled_groups[g].pop(0))
             
             # Final shuffle of the batch so the model doesn't see [AAAAABBC] order
-            np.random.shuffle(batch)
+            self._rng.shuffle(batch)
             yield batch
 
     def __len__(self):

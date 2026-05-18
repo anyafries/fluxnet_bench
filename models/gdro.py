@@ -80,6 +80,8 @@ class GroupDRO:
         if envs is None:
             raise ValueError("GroupDRO requires environment labels (envs)")
 
+        torch.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
         self.model = self._build_model(X.shape[1])
         self.model.to(self.device)
 

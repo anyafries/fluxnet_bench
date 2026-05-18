@@ -21,7 +21,7 @@ def load_data(path):
     if not os.path.exists(path):
         raise FileNotFoundError(f"Data path not found: {path}")
     dfs = []
-    for filename in os.listdir(path):
+    for filename in sorted(os.listdir(path)):
         if filename.endswith(".csv"):
             site_id = filename.split(".")[0]
             df_site = pd.read_csv(os.path.join(path, filename))
@@ -112,20 +112,14 @@ def get_data_split(
             test_group = ['AU-Dry', 'AU-DaS', 'AU-Lit', 'BR-Npw', 'AU-Lon', 'AU-ASM', 'US-xDS', 'US-ONA', 'US-SP1', 'US-xJE', 'US-SRM', 'US-HB2', 'AU-GWW', 'US-SRS', 'US-SRG', 'IL-Yat', 'US-HB3', 'US-HB1', 'US-xDL', 'US-RGA', 'AU-Cum', 'US-xTA', 'AU-Cpr', 'US-Whs', 'US-Cst', 'US-Wkg', 'IT-BCi', 'US-Jo2', 'IT-Cp2', 'US-RGo', 'ES-Abr', 'US-NC4', 'ES-Agu', 'US-Akn', 'US-xJR', 'ES-Pdu', 'US-Ton', 'ES-LM2', 'IT-Noe', 'ES-LM1']
         else:
             raise ValueError(f"Setting `{setting}` not recognized in get_data_split")
-        
-        all_sites = df_out["site_id"].unique().tolist()
-        remaining_sites = [site for site in all_sites if site not in test_group]
-        np.random.seed(42)
-        np.random.shuffle(remaining_sites)
-
         test = df_out.loc[df_out["site_id"].isin(test_group)].copy()
 
         # get train, val depending on validation_split strategy
         if validation_split == 'default':
-            if setting[-2:] == "40":
-                val_group = remaining_sites[:20]
-            else:
-                val_group = remaining_sites[:25]
+            if setting == "spatial-easy40":
+                val_group = ['DE-Tha', 'US-xTR', 'US-ICh', 'FR-Aur', 'US-NR1', 'CA-TPD', 'AU-Cum', 'US-RGA', 'CZ-Lnz', 'US-UC1', 'SE-Htm', 'AU-Rgf', 'ES-Agu', 'FR-Mej', 'CA-ARF', 'CA-TP1', 'CA-SCC', 'US-BZB', 'US-xCP', 'DK-Vng']
+            elif setting == "TA40":
+                val_group = ['US-Snf', 'US-GLE', 'US-CF2', 'FI-Let', 'CZ-Lnz', 'US-Rls', 'UK-AMo', 'FR-Gri', 'US-xTR', 'US-ALQ', 'CA-ER1', 'US-xBR', 'FI-Hyy', 'IE-Cra', 'DE-Obe', 'AU-War', 'US-RGB', 'CH-Cha', 'US-Syv', 'US-UMB']
             val = df_out.loc[df_out["site_id"].isin(val_group)].copy()
             train = df_out.loc[~df_out["site_id"].isin(test_group + val_group)].copy()
             
@@ -168,7 +162,7 @@ def get_data_split(
             train = train.dropna(subset=[col])
             val = val.dropna(subset=[col])
 
-    # drop rows with any missing values (excluding target if remove_missing_target is False)
+    # ensure no row has missing values (excluding target if remove_missing_target is False)
     feature_cols = [col for col in train.columns if col not in ['GPP', 'NEE', 'ET']]
     incomplete_train = train[feature_cols].isna().any(axis=1).sum()
     incomplete_val = val[feature_cols].isna().any(axis=1).sum()

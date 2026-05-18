@@ -13,7 +13,6 @@ Available models:
   - 'maxrm_regret'  : MaxRM Random Forest with regret risk
 """
 
-import itertools
 import json
 import numpy as np
 import os
@@ -21,8 +20,6 @@ import random
 
 from utils.utils import setup_logging, get_params_path
 
-np.random.seed(42)
-random.seed(42)
 logger = setup_logging(__name__)
 
 
@@ -45,8 +42,6 @@ def get_model(model_name, params=None):
     Raises:
         NotImplementedError: If the model name is not recognized
     """
-    # params = get_default_params(model_name)
-
     if model_name == 'xgb':
         from xgboost import XGBRegressor
         return XGBRegressor(**params)
@@ -106,9 +101,9 @@ def get_model(model_name, params=None):
 # Hyperparameter grids for each model
 # ------------------------------------------------------------------------
 
-def sample_log_uniform(low, high):
+def sample_log_uniform(low, high, rng):
     """Best practice for LR and Alpha: samples across orders of magnitude."""
-    return float(10 ** np.random.uniform(np.log10(low), np.log10(high)))
+    return float(10 ** rng.uniform(np.log10(low), np.log10(high)))
 
 
 def load_best_mlp_params(setting, target, val_strategy):
@@ -130,9 +125,12 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
         setting (str): Current setting (used for inheriting MLP params).
         target (str): Current target (used for inheriting MLP params).
     """
+    np_rng = np.random.default_rng(42)
+    rng = random.Random(42)
+
     if model_name in ['lr', 'constant']:
-        return [{}] 
-    
+        return [{}]
+
     best_mlp = None
     if model_name in ['gdro', 'coral', 'mmd']:
         if setting is not None and target is not None:
@@ -148,27 +146,28 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
 
         if model_name == 'ridge':
             params = {
-                'alpha': sample_log_uniform(1e-3, 1e2)
+                'alpha': sample_log_uniform(1e-3, 1e2, np_rng)
             }
 
         elif model_name == 'robust-lr':
             params = {
-                'alpha': sample_log_uniform(1e-3, 1e2),
-                'epsilon': np.random.uniform(1.1, 2.0)
+                'alpha': sample_log_uniform(1e-3, 1e2, np_rng),
+                'epsilon': float(np_rng.uniform(1.1, 2.0))
             }
 
         elif model_name in ['maxrm_mse', 'maxrm_regret']:
             params = {
-                'n_estimators': random.choice([100, 200, 500, 1000]),
-                'min_samples_leaf': random.randint(5, 50),
+                'n_estimators': rng.choice([100, 200, 500, 1000]),
+                'min_samples_leaf': rng.randint(5, 50),
+                'random_state': 42,
             }
 
         elif model_name == 'xgb':
             params = {
-                'n_estimators': random.randint(100, 1000),
-                'max_depth': random.randint(3, 10),
-                'learning_rate': sample_log_uniform(0.01, 0.3),
-                'subsample': np.random.uniform(0.6, 1.0),
+                'n_estimators': rng.randint(100, 1000),
+                'max_depth': rng.randint(3, 10),
+                'learning_rate': sample_log_uniform(0.01, 0.3, np_rng),
+                'subsample': float(np_rng.uniform(0.6, 1.0)),
                 'objective': 'reg:squarederror',
                 'early_stopping_rounds': 10,
                 'n_jobs': 4,
@@ -176,18 +175,18 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
             }
 
         elif model_name == 'lightgbm':
-            max_depth = random.randint(3, 12)
+            max_depth = rng.randint(3, 12)
             # num_leaves should be less than 2^max_depth
             max_leaves = max(min(65, 2**max_depth - 1), 15)
-            
+
             params = {
-                'n_estimators': random.randint(100, 500),
-                'learning_rate': sample_log_uniform(0.05, 0.2),
-                'num_leaves': random.randint(15, max_leaves),
+                'n_estimators': rng.randint(100, 500),
+                'learning_rate': sample_log_uniform(0.05, 0.2, np_rng),
+                'num_leaves': rng.randint(15, max_leaves),
                 'max_depth': max_depth,
-                'min_child_samples': random.randint(5, 30),
+                'min_child_samples': rng.randint(5, 30),
                 # 'subsample': np.random.uniform(0.6, 1.0),
-                'colsample_bytree': np.random.uniform(0.6, 1.0),
+                'colsample_bytree': float(np_rng.uniform(0.6, 1.0)),
                 'objective': 'regression',
                 'random_state': 42,
                 'verbosity': -1,
@@ -202,20 +201,20 @@ def get_random_params(model_name, n_iter=10, setting=None, target=None):
             else:
                 # Base deep learning params
                 params = {
-                    'hidden_dims': random.choice([[128, 64], [256, 128], [512, 256, 128]]),
-                    'lr': sample_log_uniform(1e-5, 1e-2),
-                    'dropout': np.random.uniform(0.0, 0.5),
+                    'hidden_dims': rng.choice([[128, 64], [256, 128], [512, 256, 128]]),
+                    'lr': sample_log_uniform(1e-5, 1e-2, np_rng),
+                    'dropout': float(np_rng.uniform(0.0, 0.5)),
                     'n_epochs': 100,
-                    'batch_size': random.choice([512, 1024, 2048])
+                    'batch_size': rng.choice([512, 1024, 2048])
                 }
-            
+
             # Model-specific logic
             if model_name == 'gdro':
-                params['group_weight_step'] = sample_log_uniform(1e-4, 1e-1)
+                params['group_weight_step'] = sample_log_uniform(1e-4, 1e-1, np_rng)
             elif model_name == 'coral':
-                params['coral_lambda'] = sample_log_uniform(1e-2, 1e1)
+                params['coral_lambda'] = sample_log_uniform(1e-2, 1e1, np_rng)
             elif model_name == 'mmd':
-                params['mmd_lambda'] = sample_log_uniform(1e-2, 1e1)
+                params['mmd_lambda'] = sample_log_uniform(1e-2, 1e1, np_rng)
 
         random_configs.append(params)
 
