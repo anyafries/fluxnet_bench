@@ -198,7 +198,7 @@ def compute_metrics(predictions_df, model_name, setting, target, scales=None, me
             if scale_results:
                 n_samples = [r['n_samples'] for r in scale_results]
                 summary_log = f"Computed {scale} metrics: {len(scale_results)} groups"
-                logger.info(summary_log + f"{"\t" if len(summary_log) < 33 else ""}" + 
+                logger.info(summary_log + ("\t" if len(summary_log) < 33 else "") +
                             f"\t(min samples: {min(n_samples)}, mean: {np.mean(n_samples):.1f}, max: {max(n_samples)})")
 
         except Exception as e:

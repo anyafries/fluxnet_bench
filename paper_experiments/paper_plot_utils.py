@@ -6,59 +6,10 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.plots import (
-    get_weighted_skill_scores, 
-    get_ordered_settings, 
+    get_pivot_df_with_scores,
     format_sig_figs,
     get_hex_relative_color,
 )
-
-# ---------------- Preparing data -----------------
-def get_pivot_df_with_scores(df, target, metric, aggfunc='median', 
-                             lower_is_better=True,
-                             scale_order=['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'],
-                             model_order=None,
-                             settings_order=None,
-                             baseline_model='lr'): # <-- Added baseline_model parameter
-    assert lower_is_better, "This function currently assumes that lower metric values are better"
-    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
-    
-    pivot_df = subset.pivot_table(
-        index='model', 
-        columns=['setting', 'scale'], 
-        values=metric, 
-        aggfunc=aggfunc
-    )
-
-    if settings_order is None:
-        settings_order = get_ordered_settings(pivot_df.columns.get_level_values(0).unique())
-    if scale_order is None:
-        scale_order = pivot_df.columns.get_level_values(1).unique()
-    
-    ordered_cols = []
-    for s in settings_order:
-        for sc in scale_order:
-            if (s, sc) in pivot_df.columns:
-                ordered_cols.append((s, sc))
-        for col in pivot_df.columns:
-            if col[0] == s and col not in ordered_cols:
-                ordered_cols.append(col)
-    pivot_df = pivot_df[ordered_cols]
-
-    skill_scores_df, overall_scores = get_weighted_skill_scores(pivot_df, baseline_model=baseline_model)
-
-    if model_order is not None:
-        pivot_df = pivot_df.reindex(model_order)
-        if skill_scores_df is not None:
-            skill_scores_df = skill_scores_df.reindex(model_order)
-        if overall_scores is not None:
-            overall_scores = overall_scores.reindex(model_order)
-    elif overall_scores is not None:
-        sort_index = overall_scores.sort_values(ascending=False).index
-        pivot_df = pivot_df.reindex(sort_index)
-        skill_scores_df = skill_scores_df.reindex(sort_index)
-        overall_scores = overall_scores.reindex(sort_index)
-
-    return pivot_df, overall_scores, skill_scores_df
 
 
 # ---------------- Latex leaderboard -----------------
@@ -194,7 +145,7 @@ def create_latex_leaderboard(
     latex_str = "\n".join(lines)
 
     # --- 8. Wrap in Small Font ---
-    latex_str = "{\\small\n\\setlength{\\tabcolsep}{2pt}\n" + latex_str + "\n}\n"
+    latex_str = "{\\small\n\\setlength{\\tabcolsep}{1.4pt}\n" + latex_str + "\n}\n"
     with open(filename, 'w', encoding='utf-8') as f:
         f.write(latex_str)
     print(f"Publication-ready LaTeX leaderboard saved to {filename}")

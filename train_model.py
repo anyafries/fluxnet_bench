@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument("--rerun", action='store_true',
                         help="Rerun existing results")
     parser.add_argument("--setting", type=str,
-                        choices=['time-split', 'spatial-easy40', 'TA40'],
+                        choices=['time-split', 'spatial-easy40', 'TA40', 'all'],
                         default='all', help="Experiment setting")
     parser.add_argument("--target", type=str, 
                         choices=['GPP', 'NEE', 'ET', 'all'],

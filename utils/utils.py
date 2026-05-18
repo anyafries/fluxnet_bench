@@ -86,6 +86,7 @@ def find_available_experiments(results_dir=RESULTS_DIR):
 
     experiments = []
     for filename in os.listdir(results_dir):
+        print(f"Checking file: {filename}")
         if filename.endswith('_predictions.csv'):
             # Parse filename: {setting}_{target}_{model}_val_{strategy}_predictions.csv
             base = filename.replace('_predictions.csv', '')

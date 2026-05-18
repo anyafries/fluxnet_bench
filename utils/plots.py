@@ -130,14 +130,14 @@ def plot_metric_grid(results, target, metric='rmse', agg='median', outdir=PLOTS_
 
     if callable(agg):
         agg = 'quantile'
-    outfile = os.path.join(outdir, f"{agg}_{target}_{metric}_by_scale.png")
+    outfile = os.path.join(outdir, f"{metric}_by_scale_{agg}_{target}.png")
     plt.savefig(outfile, dpi=150)
     plt.close(fig)
     logger.info(f"Saved: {outfile}")
 
 
 def plot_cdf(results, target, metric, scale, setting, ax, xmax=None,
-             linestyle='-', linewidth=2):
+             setting_name=None, linestyle='-', linewidth=2):
     """
     Plot CDF of metric for one target/scale/setting (single subplot).
 
@@ -193,8 +193,8 @@ def plot_cdf(results, target, metric, scale, setting, ax, xmax=None,
         ax.set_xlim(-0.5, 1.0)
     # else:
     #     ax.set_xlim(0, xmax)
-
-    ax.set_title(setting)
+    setting_name = setting_name if setting_name else setting
+    ax.set_title(setting_name)
     ax.legend()
 
 
@@ -264,7 +264,8 @@ def plot_quantile(results, target, metric, scale, setting, ax, y_limit=None):
     ax.legend()
 
 
-def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DIR):
+def plot_cdf_grid(results, target, metric='rmse', scale='daily', 
+                  settings_names=None, outdir=PLOTS_DIR):
     """
     Create subplots showing CDF for each available setting.
 
@@ -298,200 +299,72 @@ def plot_cdf_grid(results, target, metric='rmse', scale='daily', outdir=PLOTS_DI
     ][metric].max()
 
     for i, setting in enumerate(settings):
-        plot_cdf(results, target, metric, scale, setting, axes[i], xmax=xmax)
+        setting_name = settings_names.get(setting, setting) if settings_names else setting
+        axes[i].axhline(0.5, color='gray', linestyle=':', linewidth=1)
+        axes[i].axhline(0.9, color='gray', linestyle=':', linewidth=1)
+        plot_cdf(results, target, metric, scale, setting, axes[i], 
+                 setting_name=setting_name, xmax=xmax)
 
     fig.suptitle(f"{target} ({scale})")
     plt.tight_layout()
 
-    outfile = os.path.join(outdir, f"{target}_{metric}_{scale}_cdf.png")
+    outfile = os.path.join(outdir, f"cdf_{target}_{metric}_{scale}.png")
     plt.savefig(outfile, dpi=150)
     plt.close(fig)
     logger.info(f"Saved: {outfile}")
 
 
-# TODO: add logger
-# TODO: add option for higher-is-better metrics
-# TODO: saving should be cleaner and match other functions
-# TODO: clean up to match style of other functions
-# TODO: would actually be nice if this whole thing was transposed 
-# TODO: make more modular/general -> only for one scale for example
-# TODO: handle ties in medal rankings
-# https://pandas.pydata.org/docs/user_guide/style.html
-import pandas as pd
+# ---------------- Preparing data for leaderboard -----------------
 
-def create_leaderboard(df, target, metric, filename, aggfunc='median'):
-    # --- 1. Data Preparation ---
-    # Filter by target
-    subset = df[(df['target'] == target)]
-    
-    # Pivot: Index=(Setting, Scale), Cols=Model, Values=Metric
-    settings = get_ordered_settings(subset['setting'].unique())
-    scales = subset['scale'].unique()
+def get_pivot_df_with_scores(df, target, metric, aggfunc='median', 
+                             lower_is_better=True,
+                             scale_order=['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'],
+                             model_order=None,
+                             settings_order=None,
+                             baseline_model='lr'): # <-- Added baseline_model parameter
+    assert lower_is_better, "This function currently assumes that lower metric values are better"
+    subset = df[(df['target'] == target) & (df['scale'] != 'spatial')]
     
     pivot_df = subset.pivot_table(
-        index=['setting', 'scale'], 
-        columns='model', 
+        index='model', 
+        columns=['setting', 'scale'], 
         values=metric, 
         aggfunc=aggfunc
     )
+
+    if settings_order is None:
+        settings_order = get_ordered_settings(pivot_df.columns.get_level_values(0).unique())
+    if scale_order is None:
+        scale_order = pivot_df.columns.get_level_values(1).unique()
     
-    # Reindex to enforce correct order and use a MultiIndex for rows
-    idx = pd.MultiIndex.from_product([settings, scales], names=[None, None])
-    pivot_df = pivot_df.reindex(index=idx)
-    pivot_df.columns.name = None # Clear the 'model' column heading label
+    ordered_cols = []
+    for s in settings_order:
+        for sc in scale_order:
+            if (s, sc) in pivot_df.columns:
+                ordered_cols.append((s, sc))
+        for col in pivot_df.columns:
+            if col[0] == s and col not in ordered_cols:
+                ordered_cols.append(col)
+    pivot_df = pivot_df[ordered_cols]
 
-    # --- Calculate Medals and points ---
-    # Use method='min' for standard competition ranking (1, 1, 3) 
-    # Use method='dense' if you want consecutive ranking (1, 1, 2)
-    ranks = pivot_df.rank(axis=1, method='min')
-    
-    gold = (ranks == 1).sum()
-    silver = (ranks == 2).sum()
-    bronze = (ranks == 3).sum()
-    
-    points = (gold * 3) + (silver * 2) + (bronze * 1)
-    
-    # Create the summary rows and prepend them
-    summary_data = {
-        col: [f"{points[col]} pts", f"🥇{gold[col]}    🥈{silver[col]}    🥉{bronze[col]}"] 
-        for col in pivot_df.columns
-    }
-    summary_df = pd.DataFrame(
-        summary_data, 
-        index=pd.MultiIndex.from_tuples([('Summary', 'Points'), ('Summary', 'Medals')])
-    )
-    pivot_df = pd.concat([summary_df, pivot_df])
-    
-    # --- 2. Color Logic Calculation ---
-    def highlight_medals(row):
-        # Skip styling for the summary rows
-        if row.name[0] == 'Summary':
-            return ['font-weight: bold; background-color: #f8f9fa'] * len(row)
-        
-        styles = [''] * len(row)
-        
-        # Rank the row using the exact same tie-breaking logic as the points
-        row_ranks = row.rank(method='min')
-        
-        colors = {
-            1: 'background-color: #FFD700', # Gold
-            2: 'background-color: #C0C0C0', # Silver
-            3: 'background-color: #CD7F32'  # Bronze
-        }
-        
-        # Apply colors based on the computed rank
-        for i, rank in enumerate(row_ranks):
-            if rank in colors:
-                styles[i] = colors[rank]
-                
-        return styles
+    skill_scores_df, overall_scores = get_weighted_skill_scores(pivot_df, baseline_model=baseline_model)
 
-    # --- 3. Apply Styles and Export to HTML ---
-    table = {
-        'selector': '', 
-        'props': [('border-collapse', 'collapse'), ('font-family', 'sans-serif')]
-    }
-    cells = {
-        'selector': 'th, td', 
-        'props': [('text-align', 'center'), ('padding', '8px')]
-    }
-    body_cells = {
-        'selector': 'td',
-        'props': [('border', '0.5px solid gray')]
-    }
-    # Styling for the Setting row index
-    heading1 = {
-        'selector': 'th.row_heading.level0', 
-        'props': [('font-weight', 'bold'), ('border-bottom', '1px solid black'),
-                  ('text-align', 'center'), ('border-left', '1px solid black'), 
-                  ('border-top', '1px solid black')]
-    }
-    # Styling for the Scale row index
-    heading2 = {
-        'selector': 'th.row_heading.level1', 
-        'props': [('font-weight', 'normal'), ('text-align', 'right'),
-                  ('border-right', '1px solid black')]
-    }
-    # Styling for the Model column headers
-    heading_cols = {
-        'selector': 'th.col_heading',
-        'props': [('font-weight', 'bold'), ('border-top', '1px solid black'), 
-                  ('border-bottom', '1px solid black')]
-    }
+    if model_order is not None:
+        pivot_df = pivot_df.reindex(model_order)
+        if skill_scores_df is not None:
+            skill_scores_df = skill_scores_df.reindex(model_order)
+        if overall_scores is not None:
+            overall_scores = overall_scores.reindex(model_order)
+    elif overall_scores is not None:
+        sort_index = overall_scores.sort_values(ascending=False).index
+        pivot_df = pivot_df.reindex(sort_index)
+        skill_scores_df = skill_scores_df.reindex(sort_index)
+        overall_scores = overall_scores.reindex(sort_index)
 
-    styler = (
-        pivot_df.style
-        .format(precision=2, na_rep="-")
-        .set_table_styles([table, cells, body_cells, heading1, heading2, heading_cols])
-        .apply(highlight_medals, axis=1)
-    )
-
-    # Add solid lines between setting groups (horizontal borders)
-    for i in range(len(pivot_df) - 1):
-        if pivot_df.index[i][0] != pivot_df.index[i+1][0]:
-            thickness = "1px"
-            styler.set_table_styles({
-                pivot_df.index[i]: [
-                    {"selector": "th", "props": f"border-bottom: {thickness} solid black"},
-                    {"selector": "td", "props": f"border-bottom: {thickness} solid black"},
-                ]
-            }, overwrite=False, axis=1)
-
-    # Add left and right outer borders to the data columns
-    styler.set_table_styles({
-        pivot_df.columns[0]: [
-            {"selector": "th, td", "props": "border-left: 1px solid black"}
-        ],
-        pivot_df.columns[-1]: [
-            {"selector": "th, td", "props": "border-right: 1px solid black"}
-        ]
-    }, overwrite=False, axis=0)
-
-    # Add top and bottom outer borders to the dataframe
-    styler.set_table_styles({
-        pivot_df.index[0]: [
-            {"selector": "th, td", "props": "border-top: 1px solid black"}
-        ],
-        pivot_df.index[-1]: [
-            {"selector": "th, td", "props": "border-bottom: 1px solid black"}
-        ]
-    }, overwrite=False, axis=1)
-
-    # Save to HTML file
-    html_output = '<meta charset="UTF-8">\n' + styler.to_html()
-    with open(filename, 'w', encoding='utf-8') as f:
-        f.write(html_output)
-    print(f"Transposed styled HTML table saved to {filename}")
+    return pivot_df, overall_scores, skill_scores_df
 
 
-def get_hex_color(val, min_val, max_val, lower_is_better=True):
-    """Interpolates a value into a Red-White-Green Hex color string."""
-    if pd.isna(val) or max_val == min_val:
-        return "FFFFFF" # Default white for NaNs or completely tied columns
-        
-    # Normalize between 0 (worst) and 1 (best)
-    if lower_is_better:
-        ratio = (max_val - val) / (max_val - min_val)
-    else:
-        ratio = (val - min_val) / (max_val - min_val)
-        
-    # Standard Excel-like Red, White, Green
-    # Red: (248, 105, 107), White: (255, 255, 255), Green: (99, 190, 123)
-    if ratio < 0.5:
-        # Interpolate Red to White
-        t = ratio / 0.5
-        r = int(248 + t * (255 - 248))
-        g = int(105 + t * (255 - 105))
-        b = int(107 + t * (255 - 107))
-    else:
-        # Interpolate White to Green
-        t = (ratio - 0.5) / 0.5
-        r = int(255 + t * (99 - 255))
-        g = int(255 + t * (190 - 255))
-        b = int(255 + t * (123 - 255))
-        
-    return f"{r:02X}{g:02X}{b:02X}"
-
+# ---------------- Leaderboard helpers -----------------
 
 def format_sig_figs(val, n=2):
     """Formats a number to n significant figures."""
@@ -570,3 +443,113 @@ def get_weighted_skill_scores(df, baseline_model='constant'):
     overall_scores = skill_scores_df.apply(compute_weighted_mean, axis=1)
     
     return skill_scores_df, overall_scores
+
+
+# ---------------- HTML leaderboard with colored cells -----------------
+
+# TODO: add option for higher-is-better metrics
+# TODO: make more modular/general -> only for one scale for example
+# https://pandas.pydata.org/docs/user_guide/style.html
+import pandas as pd
+def create_html_leaderboard(
+    df,
+    target,
+    metric,
+    filename,
+    aggfunc='median',
+    lower_is_better=True,
+    scale_order=['hourly', 'daily', 'weekly', 'monthly', 'seasonal', 'anom', 'iav'],
+    model_order=None,
+    settings_order=None,
+    settings_names=None,
+    rel_threshold=0.2,
+    display_mode='value',
+    baseline_model='lr'
+):
+    # --- 1. Data Preparation (Same as before) ---
+    pivot_df, overall_scores, skill_scores_df = get_pivot_df_with_scores(
+        df, target, metric, aggfunc, lower_is_better,
+        scale_order, model_order, settings_order, baseline_model
+    )
+
+    if settings_names is not None:
+        renamed_cols = [(settings_names.get(s, s), sc) for s, sc in pivot_df.columns]
+        pivot_df.columns = pd.MultiIndex.from_tuples(renamed_cols)
+        if skill_scores_df is not None:
+            skill_scores_df.columns = pivot_df.columns
+
+    if overall_scores is not None:
+        pivot_df.insert(0, ('Summary', 'Skill score \u2191'), overall_scores)
+
+    display_df = pd.DataFrame(index=pivot_df.index, columns=pivot_df.columns)
+    
+    for col in pivot_df.columns:
+        for row in pivot_df.index:
+            val = pivot_df.loc[row, col]
+            if pd.isna(val):
+                display_df.loc[row, col] = "-"
+            elif col[0] == 'Summary':
+                display_df.loc[row, col] = f"<b>{val:.2f}</b>"
+            elif display_mode == 'skill_score' and skill_scores_df is not None and col in skill_scores_df.columns:
+                ss = skill_scores_df.loc[row, col]
+                display_df.loc[row, col] = f"{ss:.2f}" if pd.notna(ss) else "-"
+            else:
+                display_df.loc[row, col] = format_sig_figs(val, n=2)
+
+    # --- 2. Styling with Rotated Headers & Sans-Serif ---
+    table_styles = [
+        # Set Global Font to Sans-Serif
+        {'selector': 'table', 'props': [
+            ('border-collapse', 'collapse'), 
+            ('font-family', 'Arial, Helvetica, sans-serif'), 
+            ('font-size', '12px')
+        ]},
+        {'selector': 'th, td', 'props': [('border', '1px solid #d3d3d3'), ('padding', '8px')]},
+        
+        # Style for the Scale Headers (Level 1) to rotate them
+        {'selector': 'th.col_heading.level1', 'props': [
+            ('height', '80px'),
+            ('vertical-align', 'bottom'),
+            ('padding', '5px'),
+            ('min-width', '25px')
+        ]},
+        # The actual rotation logic for the text inside the cell
+        {'selector': 'th.col_heading.level1 span', 'props': [
+            ('writing-mode', 'vertical-rl'),
+            ('transform', 'rotate(180deg)'),
+            ('text-align', 'left'),
+            ('display', 'inline-block')
+        ]},
+        
+        {'selector': 'th.col_heading.level0', 'props': [('background-color', '#ececec'), ('font-weight', 'bold')]},
+        {'selector': 'th.row_heading', 'props': [('background-color', '#ffffff'), ('text-align', 'left'), ('font-weight', 'bold')]}
+    ]
+
+    def style_from_original(df_dummy):
+        styles = pd.DataFrame('', index=pivot_df.index, columns=pivot_df.columns)
+        for col in pivot_df.columns:
+            if col[0] == 'Summary':
+                styles[col] = 'background-color: #f8f9fa;'
+                continue
+            col_data = pivot_df[col]
+            best_val = col_data.min() if lower_is_better else col_data.max()
+            for row in pivot_df.index:
+                val = pivot_df.loc[row, col]
+                if pd.notna(val):
+                    hex_color = get_hex_relative_color(val, best_val, rel_threshold=rel_threshold, lower_is_better=lower_is_better)
+                    styles.loc[row, col] = f'background-color: #{hex_color}; color: #1a1a1a;'
+        return styles
+
+    styler = (
+        display_df.style
+        .set_table_styles(table_styles)
+        .apply(style_from_original, axis=None)
+    )
+
+    # --- 3. Save ---
+    html_output = f'<meta charset="UTF-8">\n{styler.to_html()}'
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.write(html_output)
+    
+    return html_output
+

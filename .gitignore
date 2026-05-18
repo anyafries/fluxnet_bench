@@ -5,6 +5,7 @@ fluxnet_bench_venv/*
 
 # big folders
 data/*
+!data/sites_with_2018.csv
 data_cleaned/*
 results/*
 !results/plots/
@@ -14,6 +15,13 @@ results/plots/*
 tests/QuickEval/data/*
 tests/QuickEval/results/*
 paper_experiments/plots/*
+paper_experiments/refs/*
+paper_experiments/distribution_distances/cache/*
+paper_experiments/distribution_distances/plots/*
+paper_experiments/refs/*paper_experiments/distribution_distances/all_fluxes.txt
+paper_experiments/distribution_distances/GPP.txt
+paper_experiments/distribution_distances/ET.txt
+paper_experiments/distribution_distances/NEE.txt
 
 # other projects
 maxRM-RF-fluxnet*
