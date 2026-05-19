@@ -29,9 +29,9 @@ PyTorch uses CPU by default. For GPU support, install the appropriate CUDA versi
 
 ## Data
 
-**Instructions on how to obtain the data are coming shortly.**
+**Data can be downloaded using the link in the paper.**
 
-Each site is stored as a CSV in `data/sites/`. The benchmark uses **13 covariates** per hourly observation:
+Each site is stored as a CSV as should be saved in `data/sites/`. The benchmark uses **13 covariates** per hourly observation:
 - **Meteorological:** air temperature (TA), vapor pressure deficit (VPD), incoming shortwave radiation (SW\_IN), and others
 - **Site characteristics:** IGBP vegetation type
 - **Satellite-derived:** enhanced vegetation index (EVI), land surface temperature (LST), normalized difference water index (NDWI), and others
